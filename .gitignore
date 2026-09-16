@@ -4,10 +4,10 @@ __pycache__/
 .ruff_cache/
 .venv/
 venv/
-build/
-data/cache/
-data/reference/
-models/
-third_party/
-artifacts/
-runs/
+/build/
+/data/cache/
+/data/reference/
+/models/
+/third_party/
+/artifacts/
+/runs/

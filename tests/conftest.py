@@ -25,7 +25,7 @@ def _bf16(rng, shape, scale=0.05):
     return f32_to_bf16((rng.standard_normal(shape) * scale).astype(np.float32)).reshape(shape)
 
 
-def _make(root: Path, seed: int = 0) -> tuple[Path, Path]:
+def _make(root: Path, seed: int = 0) -> tuple[Path, Path, Path]:
     rng = np.random.default_rng(seed)
     arch = Qwen38Arch.from_config({"text_config": TINY_TEXT})
     base_dir, bl_dir = root / "base", root / "baseline"
@@ -66,14 +66,32 @@ def _make(root: Path, seed: int = 0) -> tuple[Path, Path]:
             bl.add(name, "BF16", arr.shape, arr)
     base.close()
     bl.close()
+    # A compressed-tensors NVFP4 source (unsloth layout) for MLP layers 0-2 only.
+    ct_dir = root / "ct"
+    ct = ShardWriter(ct_dir, 1 << 20)
+    for i in range(3):
+        for proj in ("gate_proj", "up_proj", "down_proj"):
+            prefix = f"model.language_model.layers.{i}.mlp.{proj}"
+            arr = tensors[prefix + ".weight"]
+            p, s, ws2 = quantize_nvfp4(bf16_to_f32(arr.reshape(-1)).reshape(arr.shape))
+            ct.add(prefix + ".weight_packed", "U8", p.shape, p)
+            ct.add(prefix + ".weight_scale", "F8_E4M3", s.shape, s)
+            ct.add(prefix + ".weight_global_scale", "F32", (), np.asarray(1.0 / ws2, "<f4"))
+            ct.add(prefix + ".input_global_scale", "F32", (), np.asarray(1.0, "<f4"))
+    ct.close()
     cfg = {"architectures": ["Qwen3_5ForConditionalGeneration"], "model_type": "qwen3_5", "text_config": TINY_TEXT,
            "vision_config": {"depth": 1}}
     (base_dir / "config.json").write_text(json.dumps(cfg))
     (bl_dir / "config.json").write_text(json.dumps({**cfg, "quantization_config": {"quant_method": "modelopt", "quant_algo": "NVFP4"}}))
     (bl_dir / "tokenizer.json").write_text("{}")
-    return base_dir, bl_dir
+    return base_dir, bl_dir, ct_dir
 
 
 @pytest.fixture(scope="session")
-def tiny_models(tmp_path_factory) -> tuple[Path, Path]:
+def tiny_all(tmp_path_factory) -> tuple[Path, Path, Path]:
     return _make(tmp_path_factory.mktemp("tiny"))
+
+
+@pytest.fixture(scope="session")
+def tiny_models(tiny_all) -> tuple[Path, Path]:
+    return tiny_all[0], tiny_all[1]

@@ -35,7 +35,13 @@ from .safetensors_io import SafeTensorsDir
 SAMPLE_ROWS = 24
 # A candidate's quantized rows may not reconstruct the base rows worse than this multiple of
 # plain round-to-nearest on the same rows (plus a small absolute slack for tiny rows).
-FIDELITY_RATIO = {NVFP4: 1.35, FP8: 1.35}
+#
+# Calibrated encoders minimize *output* error and pay for it in weight error: unsloth's GPTQ-style
+# NVFP4 MLPs measure 1.2-1.3x round-to-nearest, and 1.61x on the outlier-heavy layer-0 down_proj.
+# Substituted or random bytes land far above 5x. The bound separates those two regimes; it is
+# defense in depth, because a manifest cannot carry bytes at all -- only quantizers implemented in
+# this repository or pinned public checkpoints, which the evaluator regenerates itself.
+FIDELITY_RATIO = {NVFP4: 2.0, FP8: 2.0}
 FIDELITY_SLACK = 0.01
 
 

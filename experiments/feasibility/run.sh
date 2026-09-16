@@ -20,7 +20,7 @@ for v in experiments/feasibility/variants/*.yaml; do
   name=$(basename "$v" .yaml)
   done_ "$A/$name" && continue
   out="$M/candidates/$name"
-  [ -f "$out/bittrellis_build.json" ] || { rm -rf "$out"; bittrellis build "$v" --out "$out"; }
+  [ -f "$out/bittrellis_build.json" ] || { rm -rf "$out"; bittrellis build "$v" --out "$out" --unsloth "$M/Qwen3.8-27B-NVFP4-unsloth"; }
   if [ "$name" = V0-baseline-rebuild ]; then
     python experiments/feasibility/check_reproducible.py --compare-tensors "$out" "$M/Qwen3.8-27B-NVFP4-RTX5090" --out "$A/V0-tensor-identity.json"
   fi

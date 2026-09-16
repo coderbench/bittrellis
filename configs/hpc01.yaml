@@ -16,6 +16,13 @@ model:
   baseline:
     repo: gittensor-model-hub/Qwen3.8-27B-NVFP4-RTX5090
     revision: 5b7a687fc8211a5d631c8ca6a593dd37eb26ce33
+  # Pinned checkpoints whose quantized bytes a manifest may reuse (`quantizer: unsloth`).
+  # Their bytes still have to pass the audit's fidelity bound against the base weights.
+  quantizer_sources:
+    unsloth:
+      repo: unsloth/Qwen3.8-27B-NVFP4
+      revision: f0b7c9e722f5565102fff8481c99e4d86ae099c7
+      provides: NVFP4 (llm-compressor, actorder static) for MLP layers 0-55
   # Files copied verbatim from the baseline into every candidate.
   aux_files:
     - chat_template.jinja
@@ -93,12 +100,21 @@ frontier:
   objectives:
     kl: min              # mean KL(BF16 || candidate) over the public corpus, nats/token
     decode_tps: max      # batch-1 decode tok/s at primary_context
-    vram_gib: min        # device memory in use after load at max context
+    prefill_tps: max     # prefill tok/s at primary_context (TTFT is a deployment cost too)
+    vram_gib: min        # peak device memory over the 128/4K/16K sweep
+  # A result is better on an objective only by more than this (measured run-to-run noise:
+  # decode ±0.1%, prefill ±2%, KL is deterministic but ±0.005 is below any significant paired delta).
+  epsilon:
+    kl: 0.005
+    decode_tps: 1.0
+    prefill_tps: 450.0
+    vram_gib: 0.1
   # Normalization box for Frontier Gain (hypervolume). Versioned with the track.
   box:
     kl: [0.0, 0.30]
     decode_tps: [60.0, 120.0]
-    vram_gib: [20.0, 32.0]
+    prefill_tps: [2000.0, 20000.0]
+    vram_gib: [14.0, 32.0]
 
 gates:
   kl_max: 0.30             # hard quality floor; also the box edge above

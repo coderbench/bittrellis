@@ -113,3 +113,26 @@ def test_loader_rules_on_external_layouts(tiny_models):
         r = resolve_checkpoint(b, arch.units())
         assert r["L3.attn.q"].label == "Q4_K" and r["L0.gdn.z"].label == "Q4_K"
         assert all(stored_format(b, lin)[0] != S_FP8 for u in arch.units() for lin in u.linears)
+
+
+def test_unsloth_quantizer_splices_ct_bytes(tiny_all, tmp_path, track):
+    base, bl, ct = tiny_all
+    m = manifest(rules=[{"match": "L*.mlp", "layers": "0-2", "precision": "NVFP4", "quantizer": "unsloth"}])
+    out = tmp_path / "ct"
+    rec = build(m, track, base, bl, out, log=lambda *_: None, sources={"unsloth": ct})
+    assert rec["summary"]["mlp"] == {"NVFP4@unsloth": 3, "NVFP4": 1}
+    with SafeTensorsDir(out) as ck:
+        assert ck.get("model.language_model.layers.0.mlp.up_proj.weight_packed") is not None
+        assert ck.get("model.language_model.layers.3.mlp.up_proj.weight_scale_2") is not None
+    assert describe(out)["L0.mlp"] == "NVFP4"
+    res = audit(out, m, base, bl)
+    assert res.ok, res.errors
+    assert m.candidate_id(Qwen38Arch.from_config(bl / "config.json").units()) != manifest().candidate_id(
+        Qwen38Arch.from_config(bl / "config.json").units())
+
+
+def test_unsloth_quantizer_refuses_units_it_lacks(tiny_all, tmp_path, track):
+    base, bl, ct = tiny_all
+    m = manifest(rules=[{"match": "L*.mlp", "precision": "NVFP4", "quantizer": "unsloth"}])
+    with pytest.raises(ValueError, match="no NVFP4 bytes"):
+        build(m, track, base, bl, tmp_path / "x", log=lambda *_: None, sources={"unsloth": ct})

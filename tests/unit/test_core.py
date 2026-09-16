@@ -177,38 +177,41 @@ def test_needles():
 # ---------------------------------------------------------------- frontier
 
 
-BOX = {"kl": [0.0, 0.3], "decode_tps": [60.0, 120.0], "vram_gib": [20.0, 32.0]}
+BOX = {"kl": [0.0, 0.3], "decode_tps": [60.0, 120.0], "prefill_tps": [2000.0, 20000.0], "vram_gib": [14.0, 32.0]}
+EPS = {"kl": 0.005, "decode_tps": 1.0, "prefill_tps": 450.0, "vram_gib": 0.1}
 GATES = {"kl_max": 0.3, "top1_min": 0.8, "needle_min": 1.0, "task_max_drop_items": 6}
 
 
+def _row(id_, kl, dec, pre, vram, **kw):
+    return Row(id_, id_, "candidate", kl=kl, decode_tps=dec, prefill_tps=pre, vram_gib=vram, **kw)
+
+
 def test_dominance_and_frontier():
-    a = Row("a", "a", "candidate", kl=0.05, decode_tps=90, vram_gib=28)
-    b = Row("b", "b", "candidate", kl=0.06, decode_tps=90, vram_gib=28)   # dominated by a
-    c = Row("c", "c", "candidate", kl=0.10, decode_tps=100, vram_gib=28)  # trade-off
-    assert dominates(a, b) and not dominates(a, c)
-    assert {r.id for r in pareto([a, b, c])} == {"a", "c"}
-    rank([a, b, c], BOX)
+    a = _row("a", 0.05, 90, 15000, 22)
+    b = _row("b", 0.07, 90, 15000, 22)     # dominated by a
+    c = _row("c", 0.10, 100, 15000, 22)    # trade-off
+    assert dominates(a, b, EPS) and not dominates(a, c, EPS)
+    assert {r.id for r in pareto([a, b, c], EPS)} == {"a", "c"}
+    rank([a, b, c], BOX, EPS)
     assert b.gain == 0 and a.gain > 0 and c.gain > 0
+
+
+def test_noise_does_not_dominate():
+    r0 = _row("r0", 0.1269, 94.0, 15238, 22.01)
+    wobble = _row("w", 0.1266, 94.3, 15100, 22.01)          # all differences inside epsilon
+    assert not dominates(wobble, r0, EPS) and not dominates(r0, wobble, EPS)
+    prefill_trade = _row("p", 0.1266, 94.3, 8443, 20.83)    # saves VRAM, pays prefill
+    assert not dominates(prefill_trade, r0, EPS) and not dominates(r0, prefill_trade, EPS)
 
 
 def test_hypervolume_exact():
     assert hypervolume([(1, 1, 1)]) == pytest.approx(1.0)
     assert hypervolume([(0.5, 1, 1), (1, 0.5, 1)]) == pytest.approx(0.75)
     assert hypervolume([(0.5, 0.5, 0.5), (0.5, 0.5, 0.5)]) == pytest.approx(0.125)
+    assert hypervolume([(0.5, 0.5, 0.5, 0.5), (1, 0.2, 1, 1)]) == pytest.approx(0.0625 + 0.2 - 0.5 * 0.2 * 0.5 * 0.5)
 
 
 def test_gates_block_quality_trades():
-    fast_but_broken = Row("x", "x", "candidate", kl=0.5, decode_tps=119, vram_gib=21, top1=0.6, needle_recall=0.5)
+    fast_but_broken = _row("x", 0.5, 119, 19000, 19, top1=0.6, needle_recall=0.5)
     fails = apply_gates(fast_but_broken, GATES, None)
     assert len(fails) == 3 and frontier_gain(fast_but_broken, [], BOX) == 0.0
-
-
-def test_paired_delta_cancels_common_noise():
-    from bittrellis.eval.logits import paired_delta
-
-    rng = np.random.default_rng(0)
-    common = rng.exponential(1.0, 4000) * (rng.random(4000) < 0.05) * 20  # rare huge chaotic spikes
-    a = {"s.kl": common + 0.05}
-    b = {"s.kl": common + 0.06}
-    d = paired_delta(a, b, n_boot=300)
-    assert abs(d["delta_kl"] - 0.01) < 1e-9 and d["significant"]

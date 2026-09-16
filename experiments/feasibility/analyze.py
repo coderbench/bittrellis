@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from bittrellis.eval.logits import paired_delta
+from bittrellis.eval.logits import block_bootstrap_ci, paired_delta
 from bittrellis.frontier.pareto import dominates
 from bittrellis.frontier.report import feasibility_report, load_rows
 from bittrellis.track import REPO_ROOT, load_track
@@ -64,33 +64,37 @@ def main(art_dir: Path, out_dir: Path) -> dict:
     a_tensors = json.loads(ident.read_text()) if ident.exists() else None
     res["A_reproducible"] = bool(a_scores and all(v["identical"] for v in a_scores.values())
                                  and a_tensors and a_tensors["identical"])
-    variants = {k: v for k, v in res["vs_R0"].items() if k.startswith("V") and not k.startswith("V0")}
+    variants = {k: v for k, v in res["vs_R0"].items() if k.startswith("V") and not k.startswith("V0-")}
     res["B_quality_moves"] = any(v["kl"]["significant"] for v in variants.values())
     res["C_speed_moves"] = any((v.get("decode") or {}).get("clear") or (v.get("prefill") or {}).get("clear")
                                for v in variants.values())
 
     rows = load_rows([art_dir], track)
-    by_id = {r.name: r for r in rows}
     r0_row = next(r for r in rows if r.id == "R0")
-    mixed = [r for r in rows if r.kind == "candidate" and not r.name.startswith(("V0", "V1"))]
-    res["D_mixed_not_dominated_by_R0"] = [r.name for r in mixed if r.valid and not dominates(r0_row, r)]
+    mixed = [r for r in rows if r.kind == "candidate" and not r.name.startswith(("V0-", "V1-"))]
+    eps = track["frontier"].get("epsilon")
+    res["D_mixed_not_dominated_by_R0"] = [r.name for r in mixed if r.valid and not dominates(r0_row, r, eps)]
+    res["D_mixed_dominating_R0"] = [r.name for r in mixed if r.valid and dominates(r, r0_row, eps)]
 
     def dkl(name: str) -> dict | None:
         return variants.get(name, {}).get("kl")
 
-    v4, v5, v6, v9 = dkl("V4-gdn-q4k"), dkl("V5-attn-q4k"), dkl("V6-mlp-q4k"), dkl("V9-gdn-q4k-mlp-q4k")
+    v4, v5, v6 = dkl("V4-gdn-q4k"), dkl("V5-attn-q4k"), dkl("V6-mlp-q4k")
     if v4 and v5 and v6:
         per_b = {"gdn": v4["delta_kl"] / (GDN_PARAMS / 1e9), "attn": v5["delta_kl"] / (ATTN_PARAMS / 1e9),
                  "mlp": v6["delta_kl"] / (MLP_PARAMS / 1e9)}
         res["E_sensitivity_per_billion_weights"] = per_b
-    if v4 and v6 and v9:
-        additive = v4["delta_kl"] + v6["delta_kl"]
-        half = ((v4["ci95"][1] - v4["ci95"][0]) + (v6["ci95"][1] - v6["ci95"][0]) + (v9["ci95"][1] - v9["ci95"][0])) / 2
-        res["F_interaction"] = {"sum_of_parts": additive, "together": v9["delta_kl"],
-                                "difference": v9["delta_kl"] - additive, "tolerance": half,
-                                "interaction": abs(v9["delta_kl"] - additive) > half}
+    if all(n in arts for n in ("V4-gdn-q4k", "V6-mlp-q4k", "V9-gdn-q4k-mlp-q4k")):
+        # Per-position interaction KL9 - KL4 - KL6 + KL0: zero if the two changes add up.
+        k4, k6, k9 = _npz(arts["V4-gdn-q4k"]), _npz(arts["V6-mlp-q4k"]), _npz(arts["V9-gdn-q4k-mlp-q4k"])
+        streams = sorted(k[:-3] for k in r0_kl if k.endswith(".kl"))
+        terms = [k9[f"{s}.kl"].astype(np.float64) - k4[f"{s}.kl"] - k6[f"{s}.kl"] + r0_kl[f"{s}.kl"] for s in streams]
+        lo, hi = block_bootstrap_ci(terms, n_boot=2000)
+        res["F_interaction"] = {
+            "interaction_kl": float(np.concatenate(terms).mean()), "ci95": [lo, hi], "interaction": bool(lo > 0 or hi < 0),
+            "by_stream": {s: float(t.mean()) for s, t in zip(streams, terms, strict=True)},
+        }
     res["rows"] = {r.name: {"valid": r.valid, "frontier": r.frontier, "gain": r.gain, "gates": r.gate_failures} for r in rows}
-    _ = by_id
     out_dir.mkdir(parents=True, exist_ok=True)
     feasibility_report([art_dir], track, out_dir)
     (out_dir / "analysis.json").write_text(json.dumps(res, indent=2) + "\n")

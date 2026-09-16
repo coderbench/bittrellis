@@ -42,18 +42,18 @@ def load_rows(paths: list[Path], track: Track) -> list[Row]:
     ref0 = next((r for r in rows if r.id == "R0"), None)
     for r in rows:
         apply_gates(r, track["gates"], ref0.tasks if ref0 and r is not ref0 else None)
-    return rank(rows, track["frontier"]["box"])
+    return rank(rows, track["frontier"]["box"], track["frontier"].get("epsilon"))
 
 
 def render_table(rows: list[Row]) -> str:
-    head = f"{'':2s}{'id':18s} {'name':34s} {'KL':>7s} {'top1':>6s} {'decode':>7s} {'prefill':>8s} {'VRAM':>6s} {'FG-1':>6s}  gates"
+    head = f"{'':2s}{'id':18s} {'name':34s} {'KL':>7s} {'top1':>6s} {'decode':>7s} {'prefill':>8s} {'VRAM':>6s} {'FG-2':>6s}  gates"
     lines = [head, "-" * len(head)]
     for r in sorted(rows, key=lambda r: (r.kind != "reference", r.kl)):
         mark = "★" if r.frontier else " "
         gates = "PASS" if r.valid else "; ".join(r.gate_failures)
         lines.append(
             f"{mark} {r.id:18s} {r.name[:34]:34s} {r.kl:7.4f} {r.top1 or 0:6.3f} {r.decode_tps:7.1f} "
-            f"{(r.prefill_tps or 0):8.0f} {r.vram_gib:6.2f} {100 * r.gain:5.2f}%  {gates}"
+            f"{r.prefill_tps:8.0f} {r.vram_gib:6.2f} {100 * r.gain:5.2f}%  {gates}"
         )
     return "\n".join(lines)
 
@@ -70,7 +70,8 @@ def row_dict(r: Row) -> dict:
 def write_frontier(rows: list[Row], track: Track, out: Path | None) -> dict:
     doc = {
         "track": track.id, "track_version": track["version"], "frontier_gain_version": FG_VERSION,
-        "objectives": track["frontier"]["objectives"], "box": track["frontier"]["box"], "gates": track["gates"],
+        "objectives": track["frontier"]["objectives"], "epsilon": track["frontier"].get("epsilon"),
+        "box": track["frontier"]["box"], "gates": track["gates"],
         "rows": [row_dict(r) for r in rows], "frontier": [r.id for r in rows if r.frontier],
     }
     if out:
@@ -89,19 +90,28 @@ def _plots(rows: list[Row], out: Path) -> list[str]:
         return []
     out.mkdir(parents=True, exist_ok=True)
     made = []
-    for key, label, fname in (("decode_tps", "decode tok/s @4k (higher is better)", "quality_vs_decode.png"),
-                              ("prefill_tps", "prefill tok/s @4k (higher is better)", "quality_vs_prefill.png"),
-                              ("vram_gib", "VRAM GiB (lower is better)", "quality_vs_vram.png")):
-        fig, ax = plt.subplots(figsize=(7.5, 5), dpi=140)
+    for key, label, fname in (("decode_tps", "decode tok/s @ 4K, batch 1  →  better", "quality_vs_decode.png"),
+                              ("prefill_tps", "prefill tok/s @ 4K  →  better", "quality_vs_prefill.png"),
+                              ("vram_gib", "peak VRAM GiB  ←  better", "quality_vs_vram.png")):
+        fig, ax = plt.subplots(figsize=(8, 5.2), dpi=150)
         for r in rows:
             x = getattr(r, key)
             if x is None:
                 continue
-            color = "#6b7280" if r.kind == "reference" else ("#2563eb" if r.frontier else "#93c5fd")
-            ax.scatter(x, r.kl, s=70 if r.frontier else 40, color=color, edgecolor="black" if r.frontier else "none", zorder=3)
-            ax.annotate(r.name.split(" ")[0][:22], (x, r.kl), textcoords="offset points", xytext=(5, 4), fontsize=7)
+            tag = r.id if r.kind == "reference" else r.name.split("-")[0]
+            if r.kind == "reference":
+                style = {"marker": "s", "s": 70, "color": "#9ca3af" if r.id != "R0" else "#f59e0b", "edgecolor": "#111827"}
+            elif not r.valid:
+                style = {"marker": "x", "s": 50, "color": "#dc2626"}
+            else:
+                style = {"marker": "o", "s": 70 if r.frontier else 38, "color": "#2563eb" if r.frontier else "#93c5fd",
+                         "edgecolor": "#111827" if r.frontier else "none"}
+            ax.scatter(x, r.kl, zorder=3, **style)
+            ax.annotate(tag, (x, r.kl), textcoords="offset points", xytext=(6, -3), fontsize=8,
+                        fontweight="bold" if r.frontier or r.id == "R0" else "normal")
         ax.set_xlabel(label)
-        ax.set_ylabel("KL(BF16 ‖ candidate), nats/token (lower is better)")
+        ax.set_ylabel("KL(BF16 ‖ checkpoint), nats/token  ↓ better")
+        ax.set_title("HPC-01 · Qwen3.8-27B · RTX 5090   (■ reference · ● BitTrellis · bold = frontier)", fontsize=9)
         ax.grid(alpha=0.3)
         fig.tight_layout()
         fig.savefig(out / fname)

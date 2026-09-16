@@ -93,12 +93,16 @@ class _Memo:
         return self.value
 
 
-def plan_tensors(units: list[Unit], expanded: dict[str, str], quantizers: dict[str, str],
-                 base: SafeTensorsDir, baseline: SafeTensorsDir) -> list[PlannedTensor]:
+CT_NVFP4_SUFFIXES = (".weight_packed", ".weight_scale", ".weight_global_scale", ".input_global_scale")
+
+
+def plan_tensors(units: list[Unit], full: dict[str, tuple[str, str]], base: SafeTensorsDir,
+                 baseline: SafeTensorsDir, sources: dict[str, SafeTensorsDir] | None = None) -> list[PlannedTensor]:
+    sources = sources or {}
     plan: list[PlannedTensor] = []
     searchable: set[str] = set()
     for u in units:
-        prec = expanded[u.id]
+        prec, quantizer = full[u.id]
         for lin in u.linears:
             p = lin.prefix
             searchable.add(p)
@@ -111,20 +115,30 @@ def plan_tensors(units: list[Unit], expanded: dict[str, str], quantizers: dict[s
                 memo = _Memo(lambda lin=lin: _fp8_rtn(base, lin))
                 plan.append(PlannedTensor(p + ".weight", "F8_E4M3", (lin.rows, lin.cols), lambda m=memo: m()[0]))
                 plan.append(PlannedTensor(p + ".weight_scale", "BF16", (lin.rows, 1), lambda m=memo: m()[1]))
-            elif prec == NVFP4 and quantizers["NVFP4"] == "baseline":
+            elif prec == NVFP4 and quantizer == "unsloth":
+                src = sources.get("unsloth")
+                if src is None:
+                    raise ValueError("quantizer 'unsloth' needs the pinned R1 checkpoint (--unsloth)")
+                if src.get(p + ".weight_packed") is None:
+                    raise ValueError(f"unsloth checkpoint has no NVFP4 bytes for {p} (it ships NVFP4 only for MLP layers 0-55)")
+                for suf in CT_NVFP4_SUFFIXES:
+                    ref = src.get(p + suf)
+                    if ref is not None:
+                        plan.append(PlannedTensor(p + suf, ref.dtype, ref.shape, lambda n=p + suf, s_=src: s_.raw(n)))
+            elif prec == NVFP4 and quantizer == "baseline":
                 if baseline.get(p + ".weight_scale_2") is None:
                     raise ValueError(f"baseline has no ModelOpt NVFP4 tensors for {p}; use quantizers.NVFP4: rtn")
                 for suf in NVFP4_SUFFIXES:
                     ref = baseline.get(p + suf)
                     if ref is not None:
                         plan.append(PlannedTensor(p + suf, ref.dtype, ref.shape, lambda n=p + suf: baseline.raw(n)))
-            elif prec == NVFP4:
+            elif prec == NVFP4 and quantizer == "rtn":
                 memo = _Memo(lambda lin=lin: _nvfp4_rtn(base, lin))
                 plan.append(PlannedTensor(p + ".weight", "U8", (lin.rows, lin.cols // 2), lambda m=memo: m()[0]))
                 plan.append(PlannedTensor(p + ".weight_scale", "F8_E4M3", (lin.rows, lin.cols // 16), lambda m=memo: m()[1]))
                 plan.append(PlannedTensor(p + ".weight_scale_2", "F32", (), lambda m=memo: np.asarray(m()[2], "<f4").reshape(())))
             else:
-                raise ValueError(f"{u.id}: unhandled precision {prec}")
+                raise ValueError(f"{u.id}: unhandled {prec}@{quantizer}")
     linear_suffixes = NVFP4_SUFFIXES + (".weight_packed", ".weight_global_scale", ".input_global_scale")
     for name, ref in baseline.tensors.items():
         prefix, _, suffix = name.rpartition(".")
@@ -138,14 +152,14 @@ def plan_tensors(units: list[Unit], expanded: dict[str, str], quantizers: dict[s
     return plan
 
 
-def quant_config(units: list[Unit], expanded: dict[str, str], baseline_cfg: dict) -> dict:
+def quant_config(units: list[Unit], full: dict[str, tuple[str, str]], baseline_cfg: dict) -> dict:
     layers: dict[str, dict] = {}
     q4k: list[str] = []
     for u in units:
         for lin in u.linears:
-            p = expanded[u.id]
+            p, qz = full[u.id]
             if p == NVFP4:
-                layers[lin.prefix] = {"quant_algo": "NVFP4", "group_size": 16}
+                layers[lin.prefix] = {"quant_algo": "NVFP4", "group_size": 16, "quantizer": qz}
             elif p == FP8:
                 layers[lin.prefix] = {"quant_algo": "FP8_PER_CHANNEL"}
             else:
@@ -164,7 +178,8 @@ def quant_config(units: list[Unit], expanded: dict[str, str], baseline_cfg: dict
 
 
 def build(manifest: Manifest, track: Track, base_dir: Path, baseline_dir: Path, out_dir: Path,
-          log: Callable[[str], None] = print, shard_bytes: int = 5 * 1024**3) -> dict:
+          log: Callable[[str], None] = print, shard_bytes: int = 5 * 1024**3,
+          sources: dict[str, Path] | None = None) -> dict:
     out_dir = Path(out_dir)
     if out_dir.exists() and any(out_dir.iterdir()):
         raise FileExistsError(f"{out_dir} is not empty")
@@ -173,11 +188,13 @@ def build(manifest: Manifest, track: Track, base_dir: Path, baseline_dir: Path, 
     baseline_cfg = json.loads((Path(baseline_dir) / "config.json").read_text())
     arch = Qwen38Arch.from_config(baseline_cfg)
     units = arch.units()
-    expanded = manifest.expand(units)
-    cid = candidate_hash(track.id, expanded, manifest.quantizers)
+    full = manifest.expand_full(units)
+    cid = candidate_hash(track.id, full)
     t0 = time.time()
+    used = {q for _, q in full.values()}
+    opened = {k: SafeTensorsDir(v) for k, v in (sources or {}).items() if k in used}
     with SafeTensorsDir(base_dir) as base, SafeTensorsDir(baseline_dir) as baseline:
-        plan = plan_tensors(units, expanded, manifest.quantizers, base, baseline)
+        plan = plan_tensors(units, full, base, baseline, opened)
         log(f"[build] {manifest.name} ({cid}): {len(plan)} tensors -> {out_dir}")
         writer = ShardWriter(out_dir, shard_bytes)
         for i, t in enumerate(plan):
@@ -185,8 +202,10 @@ def build(manifest: Manifest, track: Track, base_dir: Path, baseline_dir: Path, 
             if (i + 1) % 250 == 0:
                 log(f"[build]   {i + 1}/{len(plan)} tensors, {time.time() - t0:.0f}s")
         writer.close(metadata={"producer": "bittrellis", "candidate_id": cid})
+    for src in opened.values():
+        src.close()
     cfg = dict(baseline_cfg)
-    cfg["quantization_config"] = quant_config(units, expanded, baseline_cfg)
+    cfg["quantization_config"] = quant_config(units, full, baseline_cfg)
     (out_dir / "config.json").write_text(json.dumps(cfg, indent=2) + "\n")
     hf_quant = {"producer": {"name": "bittrellis", "version": __version__},
                 "quantization": {k: v for k, v in cfg["quantization_config"].items() if k != "quant_method"}}
@@ -205,7 +224,8 @@ def build(manifest: Manifest, track: Track, base_dir: Path, baseline_dir: Path, 
         "base": track["model"]["base"],
         "baseline": track["model"]["baseline"],
         "quantizers": manifest.quantizers,
-        "summary": summarize(expanded, units),
+        "quantizer_sources": {k: track["model"].get("quantizer_sources", {}).get(k) for k in opened},
+        "summary": summarize(full, units),
         "checkpoint_bytes": sum((out_dir / f).stat().st_size for f in files),
         "files": {f: file_sha256(out_dir / f) for f in files},
         "build_seconds": round(time.time() - t0, 1),

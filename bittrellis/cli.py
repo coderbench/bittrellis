@@ -14,12 +14,13 @@ import yaml
 from . import __version__
 from .manifest import Manifest, ManifestError, summarize
 from .model.qwen38 import Qwen38Arch
-from .precision import PRECISIONS, SPACE, stored_bytes, stored_for, weight_bytes
+from .precision import SPACE, stored_bytes, stored_for, weight_bytes
 from .track import REPO_ROOT, load_track
 
 DEFAULTS = {
     "base": os.environ.get("BITTRELLIS_BASE", str(REPO_ROOT / "models/Qwen3.8-27B")),
     "baseline": os.environ.get("BITTRELLIS_BASELINE", str(REPO_ROOT / "models/Qwen3.8-27B-NVFP4-RTX5090")),
+    "unsloth": os.environ.get("BITTRELLIS_UNSLOTH", str(REPO_ROOT / "models/Qwen3.8-27B-NVFP4-unsloth")),
     "sparkinfer": os.environ.get("BITTRELLIS_SPARKINFER", str(REPO_ROOT / "third_party/sparkinfer")),
     "corpus": str(REPO_ROOT / "data/corpus/hpc01-public-v2.json"),
     "reference": os.environ.get("BITTRELLIS_REFERENCE", str(REPO_ROOT / "data/reference/hpc01-public-v2")),
@@ -76,14 +77,15 @@ def cmd_manifest(args) -> int:
             print(f"✗ {path}: {e}")
             status = 1
             continue
+        full = m.expand_full(units)
         est = sum(weight_bytes(by_id[k], p) for k, p in exp.items()) / GIB
         disk = sum(stored_bytes(lin, stored_for(p)) for k, p in exp.items() for lin in by_id[k].linears) / GIB
         print(f"✓ {path}: {m.name}  id={m.candidate_id(units)}")
-        for kind, counts in summarize(exp, units).items():
-            print(f"    {kind:8s} " + "  ".join(f"{p}×{counts[p]}" for p in PRECISIONS if p in counts))
+        for kind, counts in summarize(full, units).items():
+            print(f"    {kind:8s} " + "  ".join(f"{p}×{n}" for p, n in sorted(counts.items())))
         print(f"    searchable decode weights ≈ {est:.2f} GiB, stored Linears ≈ {disk:.2f} GiB (estimate)")
         if args.expand:
-            print(json.dumps(exp, indent=1))
+            print(json.dumps({k: f"{p}@{q}" for k, (p, q) in full.items()}, indent=1))
     return status
 
 
@@ -93,7 +95,7 @@ def cmd_build(args) -> int:
     track = load_track(args.track)
     m = Manifest.load(args.manifest)
     out = Path(args.out) if args.out else REPO_ROOT / "models/candidates" / f"{m.name}-{m.candidate_id(_arch(args).units())}"
-    build(m, track, Path(args.base), Path(args.baseline), out)
+    build(m, track, Path(args.base), Path(args.baseline), out, sources={"unsloth": Path(args.unsloth)})
     print(out)
     return 0
 
@@ -274,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(fn=cmd_manifest)
 
     p = sub.add_parser("build", help="build a deployable checkpoint from a manifest (CPU only)")
-    paths(p, "base", "baseline")
+    paths(p, "base", "baseline", "unsloth")
     p.add_argument("manifest")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_build)
