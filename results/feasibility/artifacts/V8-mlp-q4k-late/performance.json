@@ -1,0 +1,23 @@
+{
+  "contexts": {
+    "128": {
+      "decode_tps": 96.7467,
+      "prefill_pp": 4207.8065
+    },
+    "4096": {
+      "decode_tps": 94.622,
+      "prefill_pp": 10817.5777
+    },
+    "16384": {
+      "decode_tps": 91.1351,
+      "prefill_pp": 9708.124
+    }
+  },
+  "decode_tps": 94.622,
+  "prefill_tps": 10817.5777,
+  "primary_context": 4096,
+  "vram_gib": 21.445,
+  "vram_gib_after_load": 20.9,
+  "gpu_idle_mib_before": 127,
+  "reps": 2
+}

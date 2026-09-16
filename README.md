@@ -33,11 +33,23 @@ built into a real checkpoint, audited, and measured on the real card.
 
 <!-- STATUS -->
 
-## Status: Phase 1–2 feasibility
+## Status: feasibility passed ✅, search is open
 
-Before building a search engine, BitTrellis had to prove there is something to search for. The
-feasibility experiment and its verdict are in
-[`results/feasibility/feasibility_report.md`](results/feasibility/feasibility_report.md).
+Before building a search engine, BitTrellis had to prove there is something to search for. Seventeen
+checkpoints were measured on one RTX 5090 against a pre-registered verdict rule.
+
+> **STRONG PASS.** SparkInfer's shipped Qwen3.8-27B checkpoint is **not on the frontier**. A
+> BitTrellis map with the same speed and memory diverges **12% less** from BF16, and six other
+> maps open trade-offs the shipped checkpoint doesn't offer.
+
+What the data says, in one line each:
+
+- **Where bits go matters more than how many.** At the same 4.5 bits, maps move prefill −52%, VRAM ±1.9 GiB, KL −18%.
+- **Depth is capability.** Protecting shallow recurrent layers fixes long context (KL 0.089 → 0.037); deep layers fix math (0.174 → 0.109).
+- **Effects don't add.** Two changes combined measure −0.012 nats from their sum (95% CI excludes 0).
+- **Kernels have opinions.** The first layer's format picks the prefill path for the whole model, a 28% swing that no bits-per-weight model predicts.
+
+Full report: [`results/feasibility/feasibility_report.md`](results/feasibility/feasibility_report.md)
 
 <!-- /STATUS -->
 
@@ -59,6 +71,37 @@ NVIDIA's official NVFP4 build is recorded too. It **does not load** on the pinne
 FP8 scales are per-tensor, and SparkInfer reads only per-row FP8.
 
 <!-- FRONTIER -->
+
+```text
+╭──────────────────────────────────────────────────────────────────────────────╮
+│  HPC-01 FRONTIER · Qwen3.8-27B · 1× RTX 5090 · SparkInfer b1ed168 · 2 reps   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+                                        KL vs BF16   decode   prefill   VRAM
+                                          ↓ nats      ↑ tok/s  ↑ tok/s   ↓ GiB
+  ★ R2  llama.cpp · UD-Q4_K_M               0.059       80.0     3,635   16.2
+  ★ R1  unsloth · NVFP4 + FP8               0.081       82.5    10,588   23.6
+  ·  R0  gittensor NVFP4 · shipped today    0.127       94.0    15,238   22.0
+  ★ V13 R0 map + calibrated MLP bytes       0.112       93.9    14,952   22.0   ◀ dominates R0
+  ★ V3  GDN FP8                             0.105       82.7    12,129   23.9
+  ★ V1  all Q4_K                            0.115       93.5     7,294   20.2
+  ★ V7  MLP Q4_K, layers 0–31               0.121       94.6     8,434   21.4
+  ★ V6  MLP Q4_K                            0.127       94.3     8,443   20.8
+  ★ V5  attention Q4_K                      0.128       93.9    14,025   21.8
+  ★ V4  GDN Q4_K                            0.132       94.4    12,304   21.6
+
+  ★ = on the ε-frontier (not dominated beyond measurement noise on any of the 4 objectives)
+```
+
+<p align="center">
+  <img src="results/feasibility/plots/quality_vs_decode.png" width="49%" alt="KL vs decode"/>
+  <img src="results/feasibility/plots/quality_vs_prefill.png" width="49%" alt="KL vs prefill"/>
+</p>
+
+**Against llama.cpp.** llama.cpp's best GGUF (R2) is the most accurate and the smallest point
+measured, but it decodes **15% slower** and prefills **4.2× slower** than SparkInfer's maps.
+SparkInfer's shipped checkpoint (R0) has the speed but diverges **2.2× more**. The open
+territory between them is where BitTrellis maps compete.
+
 <!-- /FRONTIER -->
 
 ---
@@ -71,8 +114,8 @@ FP8 scales are per-tensor, and SparkInfer reads only per-row FP8.
 | GPU | 1× NVIDIA GeForce RTX 5090 (32 GB) |
 | Runtime | SparkInfer v0.5.8 @ `b1ed168`, every runtime knob pinned |
 | Search space | 273 units × {NVFP4, FP8, Q4_K} where the runtime executes them |
-| Quality | KL divergence from BF16 on a fixed 49K-token corpus, plus 8K/16K/32K needles |
-| Objectives | KL ↓ · decode tok/s ↑ · VRAM ↓ |
+| Quality | KL divergence from BF16 on a fixed 78K-token corpus (21,624 scored positions), plus 8K/16K/32K needles |
+| Objectives | KL ↓ · decode tok/s ↑ · prefill tok/s ↑ · peak VRAM ↓ |
 | Frozen | architecture, tokenizer, every non-Linear tensor, the weights themselves |
 
 Everything is pinned in [`configs/hpc01.yaml`](configs/hpc01.yaml).
@@ -108,7 +151,7 @@ line-level evidence: [docs/precision_space.md](docs/precision_space.md).
 | **Manifest** | A few lines of YAML that assign a precision to every unit. It *is* the submission. |
 | **Audit** | Proof that a checkpoint is nothing but a precision transformation of the pinned weights: bytes, tensor set, reconstruction fidelity, loader resolution. |
 | **KL** | How far the checkpoint's next-token distribution is from BF16, teacher-forced through SparkInfer itself. Deterministic, compared *paired* position by position. |
-| **Frontier Gain** | The normalized hypervolume a result adds to the KL × decode × VRAM frontier. It replaces XS/S/M/L/XL labels, which measure effort, not effect. |
+| **Frontier Gain** | The normalized hypervolume a result adds to the KL × decode × prefill × VRAM frontier. It replaces XS/S/M/L/XL labels, which measure effort, not effect. |
 
 ---
 

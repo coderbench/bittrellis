@@ -56,7 +56,7 @@ same bits. So "+5% smaller at equal quality" cannot come from fewer bits.
 - On the baseline's own model card, three NVFP4 builds score 79.0%, 80.2% and 78.7% over 328 items with overlapping 95% intervals. Task accuracy cannot separate precision maps.
 
 **Fix:**
-- The primary quality metric is **KL(BF16 ‖ candidate)**, teacher-forced through SparkInfer on a fixed 49K-token corpus. It covers general, math, code, tool-call and multilingual text, plus 8K/16K/32K long-context streams with planted needles.
+- The primary quality metric is **KL(BF16 ‖ candidate)**, teacher-forced through SparkInfer on a fixed 78K-token corpus (21,624 scored positions). It covers general, math, code, tool-call and multilingual text, plus 8K/16K/32K long-context streams with planted needles.
 - Scoring is deterministic (`SPARKINFER_DETERMINISTIC=1`). Uncertainty is a block-bootstrap interval over positions, not run-to-run noise.
 - SparkInfer's own task suite remains as a guard against regressions, not as a ranking signal.
 
@@ -119,10 +119,35 @@ applied.
 - exact tensor set, with no extras;
 - non-searchable tensors byte-identical to the baseline;
 - BF16 Linears byte-identical to the base model;
-- NVFP4/FP8 Linears within 1.35× of round-to-nearest reconstruction error on sampled rows;
+- NVFP4/FP8 Linears within 2× of round-to-nearest reconstruction error on sampled rows;
 - manifest ≡ what the loader would execute.
 
-## 10. Smaller corrections
+## 10. Three objectives let a map hide a large cost
+
+**Blueprint:** official frontier is quality × decode × VRAM; prefill is "secondary".
+
+**Measured:** V6 (all MLPs at Q4_K) matches the baseline's KL and decode and saves 1.2 GiB. On
+three axes it dominates the shipped checkpoint, yet it halves prefill throughput (−45%).
+
+**Fix:** prefill at 4K is a fourth official objective. Dominance is **ε-dominance**, with each
+objective's measured noise as its tolerance, so reruns cannot move a result onto the frontier.
+Frontier Gain is versioned FG-2.
+
+## 11. The quantizer is as big a lever as the topology
+
+**Blueprint:** the artifact is the *precision map*.
+
+**Measured:** unsloth's checkpoint beat BitTrellis's GDN-FP8 map on KL with the same GDN
+precision, because its NVFP4 MLP bytes are calibrated (GPTQ-style `actorder`). Splicing those
+bytes into the shipped map (V13) cuts KL by 12% at identical speed and memory. No
+precision-only change did that.
+
+**Fix:** a manifest assigns `precision@quantizer` per unit. Quantizers are either implemented in the
+repository or pinned public checkpoints (`quantizer_sources`), so manifests never carry bytes.
+The audit's fidelity bound allows calibrated encoders (1.2–1.6× round-to-nearest weight
+error) and rejects substitution (> 5×).
+
+## 12. Smaller corrections
 
 - **Repetitions:** 2, never more. Decode noise is judged against the spread between those two runs.
 - **MTP:** out of scope. The baseline strips the MTP head and the runtime never loads it.

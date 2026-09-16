@@ -8,7 +8,7 @@ evaluator proves on real hardware whether it moved the frontier.
   ───                                   ───────────────────────────
   write manifests/<name>.yaml ──PR──▶   build  → audit → score → bench → tasks
                                                                    │
-                         ◀── comment: gates · frontier · FG-1 ◀────┘
+                         ◀── comment: gates · frontier · FG-2 ◀────┘
 ```
 
 ## 1. Set up (no GPU needed)
@@ -81,7 +81,7 @@ Don't modify evaluator paths: `configs/`, `data/corpus/`, `bittrellis/eval/`,
 
 1. **Audit.** A pure precision transformation of the pinned weights, or it is rejected.
 2. **Gates.** KL ≤ 0.30 · top-1 ≥ 0.80 · every needle retrieved · no task suite more than 6 items below R0.
-3. **Frontier Gain (FG-1).** The normalized hypervolume your result adds to the current frontier (KL × decode × VRAM). Dominated results earn 0; see [frontier.md](frontier.md).
+3. **Frontier Gain (FG-2).** The normalized hypervolume your result adds to the current frontier (KL × decode × prefill × VRAM). Dominated results earn 0; see [frontier.md](frontier.md).
 4. **Holdout.** Frontier-moving results are re-scored on a sealed holdout corpus drawn from the same sources. A map tuned to the public tokens does not survive it.
 
 ## What is not allowed

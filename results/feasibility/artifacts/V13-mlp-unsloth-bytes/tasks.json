@@ -1,0 +1,39 @@
+{
+  "suites": {
+    "bfcl": {
+      "passed": 59,
+      "n": 75,
+      "rate": 0.7866666666666666
+    },
+    "gsm8k": {
+      "passed": 32,
+      "n": 33,
+      "rate": 0.9696969696969697
+    },
+    "humaneval": {
+      "passed": 4,
+      "n": 5,
+      "rate": 0.8
+    },
+    "ifeval": {
+      "passed": 5,
+      "n": 8,
+      "rate": 0.625
+    },
+    "mmlu_pro": {
+      "passed": 44,
+      "n": 75,
+      "rate": 0.5866666666666667
+    }
+  },
+  "passed": 144,
+  "n": 196,
+  "rate": 0.7346938775510204,
+  "max_tokens": {
+    "gsm8k": 1024,
+    "humaneval": 768,
+    "mmlu_pro": 64,
+    "ifeval": 768,
+    "bfcl": 256
+  }
+}

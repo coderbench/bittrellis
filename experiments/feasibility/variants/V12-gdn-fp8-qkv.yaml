@@ -1,0 +1,10 @@
+schema: bittrellis/precision-manifest@1
+track: HPC-01
+name: V12-gdn-fp8-qkv
+description: >
+  Follow-up to V3. FP8 only on the fused q/k/v input projection of every GDN layer (46% of GDN
+  weights), the path that writes the recurrent state; z and out stay NVFP4.
+default: NVFP4
+rules:
+  - match: "L*.gdn.qkv"
+    precision: FP8

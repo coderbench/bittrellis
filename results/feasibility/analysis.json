@@ -1,0 +1,595 @@
+{
+  "vs_R0": {
+    "R1": {
+      "kl": {
+        "delta_kl": -0.04577975286682463,
+        "ci95": [
+          -0.06184195951057715,
+          -0.030954982915951626
+        ],
+        "positions": 21624,
+        "significant": true
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 82.5492,
+        "rel": -0.1215684438362345,
+        "clear": true
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 10587.5428,
+        "rel": -0.30517852177054094,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 23.621,
+        "delta": 1.6149999999999984
+      }
+    },
+    "R2": {
+      "kl": {
+        "delta_kl": -0.06818769003938936,
+        "ci95": [
+          -0.08602085796270344,
+          -0.05260322839612531
+        ],
+        "positions": 21624,
+        "significant": true
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 79.979988,
+        "rel": -0.148908222965222,
+        "clear": true
+      },
+      "prefill": null,
+      "vram_gib": {
+        "a": 22.006,
+        "b": 16.1953125,
+        "delta": -5.8106875
+      }
+    },
+    "V0-baseline-rebuild": {
+      "kl": {
+        "delta_kl": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "positions": 21624,
+        "significant": false
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 94.0269,
+        "rel": 0.0005693100387982095,
+        "clear": false
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 14922.4663,
+        "rel": -0.02069344235422716,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 22.006,
+        "delta": 0.0
+      }
+    },
+    "V1-all-q4k": {
+      "kl": {
+        "delta_kl": -0.012369473230492669,
+        "ci95": [
+          -0.02668785088775525,
+          0.0020113848963201108
+        ],
+        "positions": 21624,
+        "significant": false
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 93.5041,
+        "rel": -0.004993966377719696,
+        "clear": false
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 7293.5273,
+        "rel": -0.5213526390568248,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 20.24,
+        "delta": -1.7660000000000018
+      }
+    },
+    "V10-gdn-fp8-deep": {
+      "kl": {
+        "delta_kl": -0.011930466081500904,
+        "ci95": [
+          -0.01967331726461395,
+          -0.004926925396388241
+        ],
+        "positions": 21624,
+        "significant": true
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 87.9122,
+        "rel": -0.0644991029376398,
+        "clear": true
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 13382.261,
+        "rel": -0.12177144917209308,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 22.992,
+        "delta": 0.9860000000000007
+      }
+    },
+    "V11-gdn-fp8-shallow": {
+      "kl": {
+        "delta_kl": -0.012977351341958727,
+        "ci95": [
+          -0.019841562937049466,
+          -0.006216422681555372
+        ],
+        "positions": 21624,
+        "significant": true
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 87.8998,
+        "rel": -0.06463105517093135,
+        "clear": true
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 12144.496,
+        "rel": -0.20300141189778684,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 22.939,
+        "delta": 0.9329999999999998
+      }
+    },
+    "V12-gdn-fp8-qkv": {
+      "kl": {
+        "delta_kl": -0.008946035508182666,
+        "ci95": [
+          -0.016688310043624307,
+          -0.0018584370632913035
+        ],
+        "positions": 21624,
+        "significant": true
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 87.9246,
+        "rel": -0.06436715070434826,
+        "clear": true
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 12173.5817,
+        "rel": -0.20109262442451784,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 22.799,
+        "delta": 0.7929999999999993
+      }
+    },
+    "V13-mlp-unsloth-bytes": {
+      "kl": {
+        "delta_kl": -0.015293663964244926,
+        "ci95": [
+          -0.027335929485274635,
+          -0.004245148279846166
+        ],
+        "positions": 21624,
+        "significant": true
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 93.8741,
+        "rel": -0.001056681997246024,
+        "clear": false
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 14952.0311,
+        "rel": -0.018753213310755586,
+        "clear": false
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 22.006,
+        "delta": 0.0
+      }
+    },
+    "V2-lmhead-bf16-source": {
+      "kl": {
+        "delta_kl": -0.0008026800136152754,
+        "ci95": [
+          -0.001779161763515562,
+          0.0002408483825766196
+        ],
+        "positions": 21624,
+        "significant": false
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 93.9512,
+        "rel": -0.0002362370628283961,
+        "clear": false
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 14993.7596,
+        "rel": -0.01601472539132092,
+        "clear": false
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 22.006,
+        "delta": 0.0
+      }
+    },
+    "V3-gdn-fp8": {
+      "kl": {
+        "delta_kl": -0.022324516477450727,
+        "ci95": [
+          -0.031510075518164586,
+          -0.013424579861889194
+        ],
+        "positions": 21624,
+        "significant": true
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 82.6691,
+        "rel": -0.12029255087077831,
+        "clear": true
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 12129.45,
+        "rel": -0.20398882551763445,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 23.922,
+        "delta": 1.9160000000000004
+      }
+    },
+    "V4-gdn-q4k": {
+      "kl": {
+        "delta_kl": 0.004633784683268932,
+        "ci95": [
+          -0.007901475505913441,
+          0.017831154740425164
+        ],
+        "positions": 21624,
+        "significant": false
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 94.3856,
+        "rel": 0.00438634762603033,
+        "clear": false
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 12304.2611,
+        "rel": -0.19251661622343286,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 21.574,
+        "delta": -0.4319999999999986
+      }
+    },
+    "V5-attn-q4k": {
+      "kl": {
+        "delta_kl": 0.0009433893821805555,
+        "ci95": [
+          -0.008499465418605452,
+          0.009850846243682772
+        ],
+        "positions": 21624,
+        "significant": false
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 93.8765,
+        "rel": -0.0010311428553186868,
+        "clear": false
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 14025.3211,
+        "rel": -0.07956978088014692,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 21.844,
+        "delta": -0.16199999999999903
+      }
+    },
+    "V6-mlp-q4k": {
+      "kl": {
+        "delta_kl": -0.000316589088340349,
+        "ci95": [
+          -0.009288491079162181,
+          0.009504765969179466
+        ],
+        "positions": 21624,
+        "significant": false
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 94.2515,
+        "rel": 0.0029593480708370126,
+        "clear": false
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 8443.3265,
+        "rel": -0.4458955481243519,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 20.832,
+        "delta": -1.1739999999999995
+      }
+    },
+    "V7-mlp-q4k-early": {
+      "kl": {
+        "delta_kl": -0.006427473391584211,
+        "ci95": [
+          -0.017259916214173193,
+          0.0039351739311916465
+        ],
+        "positions": 21624,
+        "significant": false
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 94.6131,
+        "rel": 0.006807245454564854,
+        "clear": false
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 8433.749,
+        "rel": -0.4465240842099621,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 21.396,
+        "delta": -0.6099999999999994
+      }
+    },
+    "V8-mlp-q4k-late": {
+      "kl": {
+        "delta_kl": 0.009386632454938369,
+        "ci95": [
+          -0.0006163678627808384,
+          0.020494429681811994
+        ],
+        "positions": 21624,
+        "significant": false
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 94.622,
+        "rel": 0.006901953105878917,
+        "clear": false
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 10817.5777,
+        "rel": -0.29008217767242156,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 21.445,
+        "delta": -0.5609999999999999
+      }
+    },
+    "V9-gdn-q4k-mlp-q4k": {
+      "kl": {
+        "delta_kl": -0.00805973611558458,
+        "ci95": [
+          -0.02103363376554219,
+          0.004652456573086463
+        ],
+        "positions": 21624,
+        "significant": false
+      },
+      "decode": {
+        "a": 93.9734,
+        "b": 93.7924,
+        "rel": -0.0019260769536911231,
+        "clear": false
+      },
+      "prefill": {
+        "a": 15237.7886,
+        "b": 7553.9938,
+        "rel": -0.504259181020532,
+        "clear": true
+      },
+      "vram_gib": {
+        "a": 22.006,
+        "b": 20.4,
+        "delta": -1.6060000000000016
+      }
+    }
+  },
+  "A_reproducible": true,
+  "B_quality_moves": true,
+  "C_speed_moves": true,
+  "D_mixed_not_dominated_by_R0": [
+    "V10-gdn-fp8-deep",
+    "V11-gdn-fp8-shallow",
+    "V12-gdn-fp8-qkv",
+    "V13-mlp-unsloth-bytes",
+    "V2-lmhead-bf16-source",
+    "V3-gdn-fp8",
+    "V4-gdn-q4k",
+    "V5-attn-q4k",
+    "V6-mlp-q4k",
+    "V7-mlp-q4k-early",
+    "V9-gdn-q4k-mlp-q4k"
+  ],
+  "D_mixed_dominating_R0": [
+    "V13-mlp-unsloth-bytes"
+  ],
+  "E_sensitivity_per_billion_weights": {
+    "gdn": 0.0008369548182178505,
+    "attn": 0.0005623038900974724,
+    "mlp": -1.8500176617932613e-05
+  },
+  "F_interaction": {
+    "interaction_kl": -0.012376931710513161,
+    "ci95": [
+      -0.02440620510086017,
+      -0.002048725115888938
+    ],
+    "interaction": true,
+    "by_stream": {
+      "long-16k": 0.0035383236439932055,
+      "long-32k": -0.011390254007431296,
+      "long-8k": -0.00842392021432001,
+      "short-code": 0.018973572783896386,
+      "short-general": 0.002761535961451986,
+      "short-math": -0.03886657795191713,
+      "short-multilingual": 0.007315759790050866,
+      "short-tools": -0.054019484853776445
+    }
+  },
+  "rows": {
+    "gittensor NVFP4 (SparkInfer's shipped checkpoint)": {
+      "valid": true,
+      "frontier": false,
+      "gain": 0.0,
+      "gates": []
+    },
+    "unsloth NVFP4 (hand-tuned mixed NVFP4/FP8)": {
+      "valid": true,
+      "frontier": true,
+      "gain": 0.005483097121409208,
+      "gates": []
+    },
+    "llama.cpp + unsloth UD-Q4_K_M (imatrix dynamic GGUF)": {
+      "valid": true,
+      "frontier": true,
+      "gain": 0.0075482251248538135,
+      "gates": []
+    },
+    "V0-baseline-rebuild": {
+      "valid": true,
+      "frontier": false,
+      "gain": 0.0,
+      "gates": []
+    },
+    "V1-all-q4k": {
+      "valid": true,
+      "frontier": true,
+      "gain": 0.0009078393169998367,
+      "gates": []
+    },
+    "V10-gdn-fp8-deep": {
+      "valid": true,
+      "frontier": false,
+      "gain": 0.0,
+      "gates": []
+    },
+    "V11-gdn-fp8-shallow": {
+      "valid": true,
+      "frontier": false,
+      "gain": 0.0,
+      "gates": []
+    },
+    "V12-gdn-fp8-qkv": {
+      "valid": true,
+      "frontier": false,
+      "gain": 0.0,
+      "gates": []
+    },
+    "V13-mlp-unsloth-bytes": {
+      "valid": true,
+      "frontier": true,
+      "gain": 0.003154913102764112,
+      "gates": []
+    },
+    "V2-lmhead-bf16-source": {
+      "valid": true,
+      "frontier": false,
+      "gain": 0.0,
+      "gates": []
+    },
+    "V3-gdn-fp8": {
+      "valid": true,
+      "frontier": true,
+      "gain": 0.0003504251409063852,
+      "gates": []
+    },
+    "V4-gdn-q4k": {
+      "valid": true,
+      "frontier": true,
+      "gain": 0.0014446358950077065,
+      "gates": []
+    },
+    "V5-attn-q4k": {
+      "valid": true,
+      "frontier": true,
+      "gain": 0.0002921827877797323,
+      "gates": []
+    },
+    "V6-mlp-q4k": {
+      "valid": true,
+      "frontier": true,
+      "gain": 0.0005553789544685273,
+      "gates": []
+    },
+    "V7-mlp-q4k-early": {
+      "valid": true,
+      "frontier": true,
+      "gain": 0.0005454061903066298,
+      "gates": []
+    },
+    "V8-mlp-q4k-late": {
+      "valid": false,
+      "frontier": false,
+      "gain": 0.0,
+      "gates": [
+        "needle recall 0.89 < 1.0"
+      ]
+    },
+    "V9-gdn-q4k-mlp-q4k": {
+      "valid": true,
+      "frontier": false,
+      "gain": 0.0,
+      "gates": []
+    }
+  }
+}

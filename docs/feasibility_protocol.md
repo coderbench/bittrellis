@@ -55,6 +55,18 @@ Everything is pinned in [`configs/hpc01.yaml`](../configs/hpc01.yaml):
 | V7 / V8 | MLP Q4_K in layers 0–31 / 32–63 | depth sensitivity is measured, not assumed |
 | V9 | V4 + V6 | interaction: is ΔKL(V9) ≈ ΔKL(V4) + ΔKL(V6)? |
 
+### Follow-ups (added after the first pass, before the verdict)
+
+The first pass raised three questions: GDN FP8 (V3) bought quality at a speed cost, and unsloth's
+checkpoint beat it on KL with the same GDN precision. These variants were added to answer them.
+They are labelled as post-hoc, and the verdict rule below was not changed.
+
+| ID | Map | Question |
+|---|---|---|
+| V10 / V11 | GDN FP8 in layers 32–63 / 0–31 | Which depth carries V3's gain, at what share of its cost? |
+| V12 | GDN FP8 on `qkv` only | Is the state-writing projection enough? |
+| V13 | R0's map with unsloth's calibrated NVFP4 bytes for MLP 0–55 | How much of R1's quality comes from the quantizer rather than the topology? |
+
 ## Decision questions
 
 | | Question | YES if |

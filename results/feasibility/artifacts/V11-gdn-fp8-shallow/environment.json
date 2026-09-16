@@ -1,0 +1,11 @@
+{
+  "gpu": "NVIDIA GeForce RTX 5090, 32607 MiB, 580.126.16",
+  "cuda": "Build cuda_12.8.r12.8/compiler.35583870_0",
+  "cpu": "AMD Ryzen Threadripper PRO 7965WX 24-Cores",
+  "os": "Linux-6.8.0-100-generic-x86_64-with-glibc2.39",
+  "python": "3.12.3",
+  "sparkinfer_commit": "b1ed168e3931d22d66dfa0aed3bcc2684f2b8387",
+  "bittrellis_version": "0.1.0",
+  "bittrellis_commit": "",
+  "time_utc": "2026-09-16T21:33:37Z"
+}

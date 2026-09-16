@@ -1,0 +1,15 @@
+{
+  "decode_tps": 79.979988,
+  "decode_samples": [
+    79.704,
+    80.256
+  ],
+  "prefill_tps": 3634.97004,
+  "prefill_samples": [
+    3638.89,
+    3631.05
+  ],
+  "vram_gib": 16.1953125,
+  "primary_context": 4096,
+  "reps": 2
+}

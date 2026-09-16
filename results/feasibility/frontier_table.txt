@@ -1,0 +1,19 @@
+  id                 name                                    KL   top1  decode  prefill   VRAM   FG-2  gates
+------------------------------------------------------------------------------------------------------------
+★ R2                 llama.cpp + unsloth UD-Q4_K_M (ima  0.0587  0.951    80.0     3635  16.20  0.75%  PASS
+★ R1                 unsloth NVFP4 (hand-tuned mixed NV  0.0811  0.934    82.5    10588  23.62  0.55%  PASS
+  R0                 gittensor NVFP4 (SparkInfer's ship  0.1269  0.911    94.0    15238  22.01  0.00%  PASS
+★ 003f70838a5a9c90   V3-gdn-fp8                          0.1046  0.916    82.7    12129  23.92  0.04%  PASS
+★ d1c5f27e47083dd8   V13-mlp-unsloth-bytes               0.1116  0.915    93.9    14952  22.01  0.32%  PASS
+  13c75b6741af11ae   V11-gdn-fp8-shallow                 0.1139  0.915    87.9    12144  22.94  0.00%  PASS
+★ 1fddc4c7d07a4125   V1-all-q4k                          0.1146  0.919    93.5     7294  20.24  0.09%  PASS
+  91b7ce5443e43597   V10-gdn-fp8-deep                    0.1150  0.914    87.9    13382  22.99  0.00%  PASS
+  eeabf1f22cbffe94   V12-gdn-fp8-qkv                     0.1180  0.913    87.9    12174  22.80  0.00%  PASS
+  80863854f9faac75   V9-gdn-q4k-mlp-q4k                  0.1189  0.913    93.8     7554  20.40  0.00%  PASS
+★ 2942753c6ce1ddf7   V7-mlp-q4k-early                    0.1205  0.909    94.6     8434  21.40  0.05%  PASS
+  dbde7069be5067ed   V2-lmhead-bf16-source               0.1261  0.917    94.0    14994  22.01  0.00%  PASS
+★ c9b5fdb1b2cf8897   V6-mlp-q4k                          0.1266  0.913    94.3     8443  20.83  0.06%  PASS
+  b7dcad835a44e692   V0-baseline-rebuild                 0.1269  0.911    94.0    14922  22.01  0.00%  PASS
+★ 8ed4dcd5e43935e6   V5-attn-q4k                         0.1279  0.909    93.9    14025  21.84  0.03%  PASS
+★ 85dba10911e17490   V4-gdn-q4k                          0.1316  0.910    94.4    12304  21.57  0.14%  PASS
+  2e7dad3a2f205342   V8-mlp-q4k-late                     0.1363  0.909    94.6    10818  21.45  0.00%  needle recall 0.89 < 1.0

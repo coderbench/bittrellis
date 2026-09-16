@@ -1,0 +1,11 @@
+schema: bittrellis/precision-manifest@1
+track: HPC-01
+name: V10-gdn-fp8-deep
+description: >
+  Follow-up to V3. GDN FP8 only in layers 32-63. With V11, tests whether V3's quality gain comes
+  from the deep or the shallow recurrent layers, at roughly half of V3's speed and VRAM cost.
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "32-63"
+    precision: FP8

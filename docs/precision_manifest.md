@@ -51,21 +51,34 @@ Anything else is rejected with the reason; see [precision_space.md](precision_sp
 
 | Precision | Stored bytes | Quantizer options |
 |---|---|---|
-| NVFP4 | ModelOpt `.weight` U8 + UE4M3 block scales + F32 tensor scale | `baseline`: the shipped checkpoint's bytes (per unit, identical to R0) · `rtn`: round-to-nearest from BF16 with max calibration |
+| NVFP4 | ModelOpt `.weight` U8 + UE4M3 block scales + F32 tensor scale (or the compressed-tensors layout for `unsloth`) | `baseline`: the shipped R0 bytes · `rtn`: round-to-nearest from BF16 · `unsloth`: the pinned R1 checkpoint's calibrated bytes (MLP layers 0–55 only) |
 | FP8 | E4M3 weight + one BF16 scale per output row | `rtn` |
 | Q4_K | BF16, byte-identical to the base model | none: SparkInfer fits Q4_K at load |
 
-New quantizers (for example error-feedback rounding or scale search) are welcome as PRs. Whatever
+A rule or module override can pick its own quantizer:
+
+```yaml
+rules:
+  - match: "L*.mlp"
+    layers: "0-55"
+    precision: NVFP4
+    quantizer: unsloth
+modules:
+  L3.attn.o: {precision: NVFP4, quantizer: rtn}
+```
+
+A manifest never carries bytes. It can only name quantizers implemented in `bittrellis/build.py`
+or pinned checkpoints listed under `model.quantizer_sources` in the track, so the evaluator
+regenerates every byte itself.
+
+New quantizers (for example GPTQ-style error feedback or scale search) are welcome as PRs. Whatever
 they produce must still pass the audit's fidelity bound: on sampled rows, reconstruction error at
-most 1.35× round-to-nearest plus 0.01.
+most 2× round-to-nearest plus 0.01 (calibrated encoders measure 1.2–1.6×; substituted bytes > 5×).
 
 ## Identity
 
-A candidate's id is the first 16 hex characters of a SHA-256 over:
-
-- the track;
-- the fully **expanded** map (every unit and its precision);
-- the quantizer of each precision it uses.
+A candidate's id is the first 16 hex characters of a SHA-256 over the track and the fully
+**expanded** map: every unit's `precision@quantizer`.
 
 Different rule spellings that expand to the same map are the same candidate.
 

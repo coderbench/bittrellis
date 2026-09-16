@@ -1,0 +1,9 @@
+schema: bittrellis/precision-manifest@1
+track: HPC-01
+name: V11-gdn-fp8-shallow
+description: Follow-up to V3. GDN FP8 only in layers 0-31. Mirror of V10.
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "0-31"
+    precision: FP8

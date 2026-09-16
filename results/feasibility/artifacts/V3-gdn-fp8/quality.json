@@ -1,0 +1,138 @@
+{
+  "positions": 21624,
+  "kl": 0.10460010884745463,
+  "kl_ci95": [
+    0.07942956582634231,
+    0.13474209947307253
+  ],
+  "kl_p99": 1.7731483346408812,
+  "top1": 0.9162967073621902,
+  "nll_delta": 0.0437455672926078,
+  "by_category": {
+    "code": {
+      "positions": 4095,
+      "kl": 0.07332575815988092,
+      "top1": 0.9423687423687424,
+      "nll_delta": 0.04927147664846919
+    },
+    "general": {
+      "positions": 4095,
+      "kl": 0.03787053213001343,
+      "top1": 0.8869352869352869,
+      "nll_delta": 0.02592295385073312
+    },
+    "long": {
+      "positions": 1149,
+      "kl": 0.033506985061556124,
+      "top1": 0.8938207136640557,
+      "nll_delta": 0.027688679489378386
+    },
+    "math": {
+      "positions": 4095,
+      "kl": 0.10121338643804824,
+      "top1": 0.9023199023199023,
+      "nll_delta": -0.14338617011164054
+    },
+    "multilingual": {
+      "positions": 4095,
+      "kl": 0.0636624155184596,
+      "top1": 0.9433455433455433,
+      "nll_delta": -0.0012061498580091957
+    },
+    "tools": {
+      "positions": 4095,
+      "kl": 0.26687619295057724,
+      "top1": 0.9128205128205128,
+      "nll_delta": 0.29263106514860493
+    }
+  },
+  "by_stream": {
+    "short-general": {
+      "kl": 0.03787053213001343,
+      "top1": 0.8869352869352869
+    },
+    "short-math": {
+      "kl": 0.10121338643804824,
+      "top1": 0.9023199023199023
+    },
+    "short-code": {
+      "kl": 0.07332575815988092,
+      "top1": 0.9423687423687424
+    },
+    "short-tools": {
+      "kl": 0.26687619295057724,
+      "top1": 0.9128205128205128
+    },
+    "short-multilingual": {
+      "kl": 0.0636624155184596,
+      "top1": 0.9433455433455433
+    },
+    "long-8k": {
+      "kl": 0.034939953791976355,
+      "top1": 0.8929503916449086
+    },
+    "long-16k": {
+      "kl": 0.025827121364760203,
+      "top1": 0.8903394255874674
+    },
+    "long-32k": {
+      "kl": 0.0397538800279318,
+      "top1": 0.8981723237597912
+    }
+  },
+  "needles": {
+    "long-8k": {
+      "red": {
+        "depth": 0.1,
+        "candidate": true,
+        "reference": true
+      },
+      "green": {
+        "depth": 0.5,
+        "candidate": true,
+        "reference": true
+      },
+      "blue": {
+        "depth": 0.9,
+        "candidate": true,
+        "reference": true
+      }
+    },
+    "long-16k": {
+      "red": {
+        "depth": 0.1,
+        "candidate": true,
+        "reference": true
+      },
+      "green": {
+        "depth": 0.5,
+        "candidate": true,
+        "reference": true
+      },
+      "blue": {
+        "depth": 0.9,
+        "candidate": true,
+        "reference": true
+      }
+    },
+    "long-32k": {
+      "red": {
+        "depth": 0.1,
+        "candidate": true,
+        "reference": true
+      },
+      "green": {
+        "depth": 0.5,
+        "candidate": true,
+        "reference": true
+      },
+      "blue": {
+        "depth": 0.9,
+        "candidate": true,
+        "reference": true
+      }
+    }
+  },
+  "needle_recall": 1.0,
+  "corpus_sha256": "d601053c4c9c5d2ec14b9788092f33308d28fe8cddc22d6b8a04fcc7a29664ba"
+}

@@ -92,7 +92,7 @@ Then see [frontier.md](frontier.md).
 bittrellis evaluate <checkpoint> --out artifacts/<name>       # candidate
 bittrellis evaluate <checkpoint> --reference-id R0 --out ...  # reference point
 bittrellis evaluate-llamacpp --out artifacts/R2                # llama.cpp reference
-bittrellis frontier artifacts/*                                # gates, frontier, FG-1
+bittrellis frontier artifacts/*                                # gates, frontier, FG-2
 ```
 
 Raw score dumps are kept in `scores/*.npz`, so quality can be recomputed without a GPU.
