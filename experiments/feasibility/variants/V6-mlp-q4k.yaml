@@ -1,0 +1,8 @@
+schema: bittrellis/precision-manifest@1
+track: HPC-01
+name: V6-mlp-q4k
+description: All 64 MLP blocks as Q4_K fitted from BF16; attention, GDN and lm_head stay NVFP4.
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    precision: Q4_K

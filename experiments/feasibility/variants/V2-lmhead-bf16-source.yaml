@@ -1,0 +1,10 @@
+schema: bittrellis/precision-manifest@1
+track: HPC-01
+name: V2-lmhead-bf16-source
+description: >
+  lm_head stored BF16 instead of NVFP4. Batch-1 decode always reads a Q4_K fit of lm_head, so the
+  baseline quantizes the head twice (BF16 -> NVFP4 -> Q4_K). Hypothesis: better quality, same
+  speed, and less VRAM because no NVFP4 head copy is kept.
+default: NVFP4
+modules:
+  lm_head: Q4_K

@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bittrellis"
+version = "0.1.0"
+description = "Compile the model for the hardware: precision-topology search for SparkInfer checkpoints"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "BitTrellis contributors" }]
+dependencies = [
+    "numpy>=1.26",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Rebuild the evaluation corpus from its pinned sources (the built corpus is committed).
+corpus = ["pyarrow>=15", "tokenizers>=0.20"]
+# Compute the BF16 reference distributions (once per corpus; needs ~60 GB RAM + a GPU).
+reference = ["torch>=2.7", "transformers>=5.0", "accelerate>=1.0"]
+# GPU-host evaluation: plots and tokenizer.
+eval = ["matplotlib>=3.8", "tokenizers>=0.20"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+bittrellis = "bittrellis.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/coderbench/bittrellis"
+
+[tool.setuptools.packages.find]
+include = ["bittrellis*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["gpu: needs the pinned GPU host (models, SparkInfer build)"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
