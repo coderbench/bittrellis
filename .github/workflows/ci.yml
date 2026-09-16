@@ -16,8 +16,8 @@ jobs:
       matrix:
         python: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - name: Install
@@ -38,7 +38,7 @@ jobs:
     # Proves tools/llamacpp_score.cpp still compiles against the pinned llama.cpp headers.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Fetch pinned llama.cpp headers
         run: |
           COMMIT=$(python3 -c "import yaml;print(yaml.safe_load(open('configs/hpc01.yaml'))['references']['R2']['llama_cpp_commit'])")
