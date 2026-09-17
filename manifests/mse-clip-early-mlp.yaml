@@ -1,0 +1,13 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: mse-clip-early-mlp
+description: >
+  Evaluator dry run for a quantizer PR. NVFP4 with a per-block clipping search on MLP layers 0-1:
+  same format and kernels as V0, so any change should be fidelity only.
+authors: [coderbench]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    layers: "0-1"
+    format: NVFP4
+    quantizer: mse_clip
