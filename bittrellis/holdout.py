@@ -67,14 +67,24 @@ def check(si: SparkInfer, track: Track, checkpoint: Path, artifact: Path, privat
     cand_name = json.loads((Path(artifact) / "candidate.json").read_text())["name"]
 
     def score(ckpt: Path, name: str) -> tuple[dict, dict]:
-        work = private_dir / "work" / name
+        work = private_dir / "work" / name  # "incumbent/<name>" or "candidate/<name>": a candidate never overwrites the cache
         work.mkdir(parents=True, exist_ok=True)
         q, corr = evaluate_quality(si, track, ckpt, corpus, private_dir / "reference", work, log=log)
         return q, dict(np.load(work / "kl_positions.npz"))
 
-    inc_name = json.loads((Path(incumbent_artifact) / "candidate.json").read_text())["name"]
-    inc_q, inc_pos = score(Path(incumbent_checkpoint), inc_name)
-    cand_q, cand_pos = score(Path(checkpoint), cand_name)
+    inc_ident = json.loads((Path(incumbent_artifact) / "candidate.json").read_text())
+    inc_name = inc_ident["name"]
+    # The incumbent is scored once per epoch and corpus, then reused by every later check.
+    inc_work = private_dir / "work" / "incumbent" / inc_name
+    stamp = {"epoch": meta["epoch"], "corpus_sha256": corpus.get("sha256"), "candidate_id": inc_ident.get("id")}
+    cached = inc_work / "incumbent.json"
+    if cached.exists() and (inc_work / "kl_positions.npz").exists() and json.loads(cached.read_text()).get("stamp") == stamp:
+        inc_q, inc_pos = json.loads(cached.read_text())["quality"], dict(np.load(inc_work / "kl_positions.npz"))
+        log(f"[holdout] incumbent {inc_name}: cached for epoch {meta['epoch']}")
+    else:
+        inc_q, inc_pos = score(Path(incumbent_checkpoint), f"incumbent/{inc_name}")
+        cached.write_text(json.dumps({"stamp": stamp, "quality": inc_q}) + "\n")
+    cand_q, cand_pos = score(Path(checkpoint), f"candidate/{cand_name}")
 
     gates = track["gates"]
     reasons = []
