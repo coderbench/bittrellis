@@ -157,8 +157,11 @@ def evaluate(track: Track, si: SparkInfer, model_dir: Path, out: Path, corpus: d
     _write(out / "candidate.json", identity)
     _write(out / "environment.json", environment(si, track))
     result: dict = {"candidate": identity}
+    timings = json.loads((out / "timings.json").read_text()) if (out / "timings.json").exists() else {}
     if "quality" in stages:
+        t0 = time.time()
         q, correctness = evaluate_quality(si, track, model_dir, corpus, ref_dir, out, log=log)
+        timings["quality_seconds"] = round(time.time() - t0, 1)
         if identity.get("audit_ok") is not None:
             correctness["execution_map_matches_manifest"] = bool(identity["audit_ok"])
             correctness["ok"] = correctness["ok"] and bool(identity["audit_ok"])
@@ -167,11 +170,16 @@ def evaluate(track: Track, si: SparkInfer, model_dir: Path, out: Path, corpus: d
         _write(out / "correctness.json", correctness)
     if "tasks" in stages:
         tcfg = track["evaluation"]["tasks"]
+        t0 = time.time()
         result["tasks"] = run_tasks(si, model_dir, out / "tasks", tcfg["tier"], tcfg["server_ctx"], log=log)
+        timings["tasks_seconds"] = round(time.time() - t0, 1)
         _write(out / "tasks.json", result["tasks"])
     if "performance" in stages:
+        t0 = time.time()
         result["performance"] = evaluate_performance(si, track, model_dir, corpus, out, log)
+        timings["performance_seconds"] = round(time.time() - t0, 1)
         _write(out / "performance.json", result["performance"])
+    _write(out / "timings.json", timings)
     return result
 
 

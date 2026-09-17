@@ -132,6 +132,9 @@ def cmd_manifest(args) -> int:
                 print(f"    ! near-duplicate of {other}: only {d} unit(s) differ")
         if args.expand:
             _json(m.to_dict(units)["expanded"])
+        if args.ids_out:
+            Path(args.ids_out).write_text(json.dumps({"name": m.name, "id": cid, "keys": {k: a.key() for k, a in asg.items()}},
+                                                     sort_keys=True) + "\n")
     return status
 
 
@@ -335,6 +338,19 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_fingerprint(args) -> int:
+    from . import fingerprint as F
+
+    names = [n for n in args.quantizers.split(",") if n] if args.quantizers else None
+    first = F.probe(names, args.seed)
+    F.save_probe(first, Path(args.out))
+    refs = sorted({k.split("|", 1)[0] for k in first})
+    print(f"probe seed {args.seed}: {len(first)} tensors from {', '.join(refs) or 'no regenerable quantizer'}")
+    if args.repeat_out:
+        F.save_probe(F.probe(names, args.seed), Path(args.repeat_out))
+    return 0
+
+
 def cmd_search(args) -> int:
     from .search import neighbors
 
@@ -404,6 +420,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--expand", action="store_true")
     p.add_argument("--against", help="directory of existing manifests to check for duplicates")
     p.add_argument("--min-distance", type=int, default=2, help="warn when this few units differ")
+    p.add_argument("--ids-out", help="write {name, id, keys} of the (last) manifest as JSON")
     p = sp("verify-sources", cmd_verify_sources, "hash-verify local source checkouts against the lock", "base", "shipped", "unsloth")
     p.add_argument("--source", action="append")
     p = sp("describe", cmd_describe, "what SparkInfer executes for any checkpoint")
@@ -455,6 +472,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sp("report", cmd_report, "frontier.json, comparison.csv, plots")
     p.add_argument("artifacts", nargs="+")
     p.add_argument("--out", default=str(REPO_ROOT / "results/feasibility"))
+    p = sp("fingerprint", cmd_fingerprint, "run regenerable quantizers on a seeded synthetic model; save their bytes")
+    p.add_argument("--seed", type=int, required=True)
+    p.add_argument("--quantizers", help="comma-separated names (default: every regenerable quantizer)")
+    p.add_argument("--out", required=True)
+    p.add_argument("--repeat-out", help="run again and save here, for a determinism check")
     p = sp("search", cmd_search, "baseline search helpers", "shipped")
     p.add_argument("action", choices=["neighbors"])
     p.add_argument("manifest")

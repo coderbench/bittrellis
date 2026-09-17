@@ -54,6 +54,14 @@ evaluation:
       holdout needle BF16 retrieves, and -- when its public RP-KL gain over V0 is significant -- its holdout
       gain over V0 is at least `min_gain_ratio` of the public gain.
     min_gain_ratio: 0.5
+  screen:
+    # Checks that run before any GPU time (evaluator/guards.py). See docs/guards.md.
+    near_copy_max_share: 0.02    # share of searchable weights assigned differently from an earlier PR by another author
+    copy_review_after: 3         # near-copies of other authors' PRs per epoch before a maintainer must clear the account
+    max_queued_per_author: 3     # an author's PRs waiting at once; later ones wait their turn, never rejected
+    peak_gpu_limit_gib: 31.5     # predicted peak above this would OOM on the 32 GB card
+    memory_margin_gib: 0.75      # added to the largest measured seed overhead
+    quantizer_same_bytes: 0.99   # identical-byte share at which two encoders are the same encoder
 
 frontier:
   # Internal frontier: legal BitTrellis manifests on the pinned runtime. External references never
