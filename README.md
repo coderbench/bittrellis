@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="BitTrellis: every layer doesn't deserve the same bits. Find the best compressed LLM for the GPU you actually run." width="100%"/>
+  <img src="docs/assets/hero.svg" alt="BitTrellis: the original Qwen3.8-27B needs 52 GB and does not fit a 32 GB GPU; BitTrellis chooses the format and encoder for each part of the model; the compressed checkpoint needs 22 GB and stays close to the original." width="100%"/>
 </p>
-
-<h1 align="center">BitTrellis</h1>
 
 <p align="center">
   <a href="https://github.com/coderbench/bittrellis/actions/workflows/ci.yml"><img src="https://github.com/coderbench/bittrellis/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
@@ -17,12 +15,8 @@
 
 ## The problem, in plain words
 
-Large language models are too big for consumer GPUs as they are released.
-
-```text
-Qwen3.8-27B, original (BF16)        ~52 GB        ✗ does not fit a 32 GB RTX 5090
-Qwen3.8-27B, compressed (4-bit)     ~20–24 GB     ✓ fits, with room for long context
-```
+Large language models are too big for consumer GPUs as they are released. Qwen3.8-27B needs about
+52 GB in its original form, and an RTX 5090 has 32 GB.
 
 So the model has to be **compressed** (quantized) into formats such as NVFP4, FP8 or Q4_K. That
 makes it fit, but compression always costs a little quality: the compressed model no longer
@@ -43,12 +37,10 @@ using a **better compression algorithm**, even when the format stays the same.
 ## What BitTrellis does
 
 It tries different recipes, builds each one into a real checkpoint, and measures it on the real GPU.
-Each picture below is a real recipe: one square per part of one layer, colored by how it is compressed.
+The picture below shows three real recipes. Each column is one layer of the model, and the color
+shows how that part is compressed.
 
-<p align="center"><img src="docs/assets/layers-V0-baseline-rebuild.svg" alt="Layer map of the shipped checkpoint: every part NVFP4 with the same encoder" width="100%"/></p>
-<p align="center"><img src="docs/assets/layers-V13-mlp-unsloth-bytes.svg" alt="Layer map of V13: MLP layers 0-55 use a calibrated NVFP4 encoder" width="100%"/></p>
-<p align="center"><img src="docs/assets/layers-V3-gdn-fp8.svg" alt="Layer map of V3: every Gated DeltaNet projection at FP8" width="100%"/></p>
-<p align="center"><img src="docs/assets/layers-V7-mlp-q4k-early.svg" alt="Layer map of V7: MLP layers 0-31 as Q4_K" width="100%"/></p>
+<p align="center"><img src="docs/assets/recipes.svg" alt="Three recipes drawn layer by layer. V0, today's checkpoint, uses the standard NVFP4 encoder everywhere. V13 uses a calibrated encoder for MLP layers 0 to 55 and is 11% closer to the original with 4% slower prompt reading. V3 uses FP8 on every recurrent block and is 17% closer to the original with 13% slower generation." width="100%"/></p>
 
 For every candidate it answers four questions:
 
@@ -61,17 +53,7 @@ For every candidate it answers four questions:
 
 The repository keeps the **best trade-offs** and publishes the checkpoints that win.
 
-```mermaid
-flowchart LR
-    A["🧠 Original model<br/>Qwen3.8-27B · BF16 · 52 GB"] --> B["🧪 BitTrellis<br/>tries compression recipes"]
-    B --> C{"📏 measure on the real GPU<br/>quality · decode · prefill · memory"}
-    C -->|"not better"| B
-    C -->|"better trade-off"| D["📦 best compressed checkpoint<br/>~20–24 GB on the GPU"]
-    D --> E["⚡ SparkInfer"] --> F["🖥️ RTX 5090"]
-    style B fill:#3b82f6,color:#fff,stroke:#1d4ed8
-    style D fill:#a855f7,color:#fff,stroke:#7e22ce
-    style E fill:#0f172a,color:#fff,stroke:#334155
-```
+<p align="center"><img src="docs/assets/how-it-works.svg" alt="Five steps: write a recipe, build the checkpoint, audit it, measure quality, speed and memory on the RTX 5090, and keep it only if nothing else beats it on every measure." width="100%"/></p>
 
 ## An improvement looks like this
 
@@ -89,20 +71,7 @@ fitting the hardware.
 
 ## BitTrellis vs SparkInfer
 
-```mermaid
-flowchart LR
-    subgraph BT["🧪 BitTrellis: which compressed model?"]
-      direction TB
-      f["compression format<br/>NVFP4 · FP8 · Q4_K"] --- q["compression algorithm<br/>(quantizer)"] --- m["which part gets what"]
-    end
-    subgraph SI["⚡ SparkInfer: how to run it fast?"]
-      direction TB
-      k["CUDA kernels"] --- d["prefill · decode"] --- s["KV cache · scheduler"]
-    end
-    BT -->|"checkpoint"| SI -->|"tokens"| GPU["🖥️ RTX 5090"]
-    style BT fill:#1e1b4b,color:#fff,stroke:#a855f7
-    style SI fill:#0f172a,color:#fff,stroke:#3b82f6
-```
+SparkInfer is the engine that runs the model. BitTrellis decides which compressed model it runs.
 
 | | [SparkInfer](https://github.com/gittensor-ai-lab/sparkinfer) | BitTrellis |
 |---|---|---|
@@ -113,36 +82,34 @@ flowchart LR
 ---
 
 <!-- STATUS -->
-## 📊 What the first measurements found
+## What the first measurements found
 
 > **Verdict: PASS.** Different recipes really do trade quality, speed and memory differently on the
 > RTX 5090, and no recipe wins everything. That is exactly what makes a search worth running.
 > Full numbers: [feasibility report](results/feasibility/feasibility_report.md).
 
-<p align="center"><img src="docs/assets/results-quality.svg" alt="Bar chart: how far each checkpoint drifts from the original model. V3 and V13 are closest among BitTrellis candidates; the external llama.cpp and unsloth references are closer still." width="100%"/></p>
+<p align="center"><img src="docs/assets/scorecard.svg" alt="Scorecard of every measured recipe against today's checkpoint on closeness to the original, generation speed, prompt reading speed and GPU memory. V13 is 11% closer with 4% slower prompt reading and no other change. V3 is 17% closer but 13% slower at generation. Q4_K recipes save up to 1.8 GB but read prompts up to 49% slower." width="100%"/></p>
 
 In plain words:
 
-- 🏆 **Best balance so far: V13.** Same recipe as today's checkpoint, but a better encoder for the MLP
-  layers. It stays **~12% closer to the original** at the same generation speed and the same memory.
-  The price: it reads long prompts **~4% slower**.
-- 🧮 **Different parts guard different skills.** A better MLP encoder halves the drift on math.
+- **Best balance so far: V13.** Same recipe as today's checkpoint, but a better encoder for the MLP
+  layers. It stays **11.5% closer to the original** at the same generation speed and the same memory.
+  The price: it reads long prompts **4.4% slower**.
+- **Different parts guard different skills.** A better MLP encoder halves the drift on math.
   Giving the recurrent layers 8 bits cuts long-document drift by 62%, but generates 13% slower.
-- 🧩 **Changes don't simply add up.** Two changes together behave differently from each one alone,
+- **Changes don't simply add up.** Two changes together behave differently from each one alone,
   so combinations have to be measured.
-- 🚀 **Plenty of headroom.** Reference checkpoints outside SparkInfer stay 35–53% closer to the
+- **Plenty of headroom.** The outside reference checkpoints stay 35–53% closer to the
   original, at a large speed cost. Getting that quality at SparkInfer speed is the open problem.
 <!-- /STATUS -->
 
 ---
 
 <!-- FRONTIER -->
-## 🗺️ The frontier today
+## The frontier today
 
 The **frontier** is the set of checkpoints that nothing else beats on every axis at once. A new
 result earns credit only if it pushes this set forward.
-
-<p align="center"><img src="docs/assets/results-tradeoffs.svg" alt="Scatter plots of closeness to the original model against generation speed and against GPU memory, for every measured checkpoint." width="100%"/></p>
 
 | | Checkpoint | Drift from original ↓ | Generation tok/s ↑ | 4K prompt tok/s ↑ | Peak GPU GiB ↓ |
 |---|---|---:|---:|---:|---:|
@@ -161,8 +128,8 @@ by a frontier point.
 ### Comparison targets
 
 Like llama.cpp is SparkInfer's yardstick, BitTrellis measures two outside checkpoints on the same GPU,
-with the same corpus and the same metric. They show what is possible but are never ranked: llama.cpp is a different engine, and the unsloth
-checkpoint is not a legal manifest (its FP8 attention bytes are silently refit to Q4_K at load).
+with the same corpus and the same metric. They show what is possible but are never ranked:
+llama.cpp is a different engine, and the unsloth checkpoint is not a legal manifest (its FP8 attention bytes are silently refit to Q4_K at load).
 
 | | Reference | Drift ↓ | Generation tok/s ↑ | 4K prompt tok/s ↑ | Peak GPU GiB ↓ |
 |---|---|---:|---:|---:|---:|
@@ -181,7 +148,7 @@ up SparkInfer's speed.
 
 # How it works (technical)
 
-## 🎯 Current target: HPC-01
+## Current target: HPC-01
 
 | | |
 |---|---|
@@ -223,7 +190,7 @@ runtime fit with no encoder choice. FP8 executes only on GDN. Evidence, down to 
 
 ---
 
-## Six words that do all the work
+## Key terms
 
 | Term | Meaning |
 |---|---|

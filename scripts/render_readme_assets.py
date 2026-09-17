@@ -1,258 +1,324 @@
-"""Render README visuals from real data: a banner and per-manifest layer maps (SVG).
+"""Render the README figures from real data (SVG, light and dark theme).
 
     python scripts/render_readme_assets.py            # writes docs/assets/*.svg
 
-Every cell in a layer map is one searchable unit of Qwen3.8-27B, colored by what the manifest
-assigns, so the pictures stay truthful when manifests change.
+- hero.svg          what the project does, in one picture
+- how-it-works.svg  the five steps every candidate goes through
+- recipes.svg       three real manifests, drawn layer by layer, with their measured result
+- scorecard.svg     every measured checkpoint against today's checkpoint (V0)
+
+Layer colors come from the manifests and every number from results/feasibility, so the pictures stay
+truthful when either changes. CI re-renders them and fails if the committed files differ.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
+import yaml  # noqa: E402
+
 from bittrellis.manifest import Manifest  # noqa: E402
 from bittrellis.model.qwen38 import Qwen38Arch  # noqa: E402
 
 OUT = REPO / "docs/assets"
-BG, FG, MUTED, GRID = "#0b1020", "#e5e7eb", "#94a3b8", "#1e293b"
-COLORS = {
-    "NVFP4@baseline": ("#3b82f6", "NVFP4 · shipped encoder"),
-    "NVFP4@unsloth": ("#a855f7", "NVFP4 · calibrated encoder"),
-    "NVFP4@rtn": ("#60a5fa", "NVFP4 · round-to-nearest"),
-    "FP8@rtn": ("#f59e0b", "FP8"),
-    "Q4_K@runtime": ("#14b8a6", "Q4_K (fitted at load)"),
+RESULTS = REPO / "results/feasibility"
+FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+
+# One palette, readable on GitHub's light and dark backgrounds.
+STYLE = """<style>
+.bg{fill:#ffffff;stroke:#d0d7de}.card{fill:#f6f8fa;stroke:#d0d7de}.accent{fill:#f3efff;stroke:#8b5cf6}
+.t{fill:#1f2328}.m{fill:#59636e}.rule{stroke:#d0d7de}.track{fill:#e6e9ed}.gpu{stroke:#1f2328}
+@media (prefers-color-scheme: dark){
+.bg{fill:#0d1117;stroke:#30363d}.card{fill:#161b22;stroke:#30363d}.accent{fill:#1d1633;stroke:#8b5cf6}
+.t{fill:#e6edf3}.m{fill:#9198a1}.rule{stroke:#30363d}.track{fill:#21262d}.gpu{stroke:#e6edf3}}
+</style>"""
+
+FORMATS = {  # manifest assignment → (color, legend label)
+    "NVFP4@baseline": ("#5b8def", "NVFP4, standard encoder"),
+    "NVFP4@rtn": ("#5b8def", "NVFP4, standard encoder"),
+    "NVFP4@unsloth": ("#8b5cf6", "NVFP4, calibrated encoder"),
+    "FP8@rtn": ("#e3a008", "FP8"),
+    "Q4_K@runtime": ("#14b8a6", "Q4_K"),
 }
-ROWS = (("GDN q·k·v", "gdn.qkv"), ("GDN gate z", "gdn.z"), ("GDN out", "gdn.out"), ("attention", "attn"), ("MLP", "mlp"))
+BETTER, WORSE, SAME = "#1a7f37", "#cf222e", "#8c959f"
 
 
-def _cells(manifest: Manifest) -> tuple[dict[tuple[str, int], str], str]:
+def svg(w: int, h: int, body: list[str]) -> str:
+    return "\n".join([f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" font-family="{FONT}">',
+                      STYLE, f'<rect class="bg" x="0.5" y="0.5" width="{w - 1}" height="{h - 1}" rx="12"/>', *body, "</svg>"]) + "\n"
+
+
+def text(x: float, y: float, s: str, cls: str = "t", size: int = 13, weight: int = 400, anchor: str = "start", fill: str | None = None) -> str:
+    paint = f'fill="{fill}"' if fill else f'class="{cls}"'
+    return f'<text x="{x:.1f}" y="{y:.1f}" {paint} font-size="{size}" font-weight="{weight}" text-anchor="{anchor}">{s}</text>'
+
+
+# ── hero ────────────────────────────────────────────────────────────────────────────────────────
+
+
+def hero(path: Path, shipped_gib: float) -> None:
+    w, h = 1200, 330
+    b = [text(40, 64, "BitTrellis", size=40, weight=700),
+         text(40, 96, "Finds the best way to compress a large language model for one specific GPU,", "m", 17),
+         text(40, 120, "keeping as much of the original model's quality as possible.", "m", 17)]
+    cards = [
+        ("Original model", "Qwen3.8-27B in full precision (BF16)", 52.0, "too big for a 32 GB GPU", WORSE, "card"),
+        ("BitTrellis", "chooses the format and encoder", None, "for each part of the model", None, "accent"),
+        ("Compressed checkpoint", "runs on one RTX 5090 with SparkInfer", shipped_gib, "fits, close to the original", BETTER, "card"),
+    ]
+    cw, gap, top, ch = 336, 56, 152, 150
+    for i, (title, line1, gib, line2, color, cls) in enumerate(cards):
+        x = 40 + i * (cw + gap)
+        b.append(f'<rect class="{cls}" x="{x}" y="{top}" width="{cw}" height="{ch}" rx="10"/>')
+        b.append(text(x + 20, top + 34, title, size=17, weight=600))
+        b.append(text(x + 20, top + 58, line1, "m", 13))
+        if gib is None:
+            b.append(text(x + 20, top + 78, line2, "m", 13))
+            for j, (fmt, label) in enumerate((("NVFP4@baseline", "NVFP4"), ("NVFP4@unsloth", "NVFP4 calibrated"), ("FP8@rtn", "FP8"), ("Q4_K@runtime", "Q4_K"))):
+                bx, by = x + 20 + (j % 2) * 150, top + 104 + (j // 2) * 24
+                b.append(f'<rect x="{bx}" y="{by - 11}" width="12" height="12" rx="2" fill="{FORMATS[fmt][0]}"/>')
+                b.append(text(bx + 18, by, label, "m", 13))
+            continue
+        # memory bar: the dashed line is the GPU's 32 GB
+        bx, by, scale = x + 20, top + 86, (cw - 40) / 56
+        b.append(f'<rect class="track" x="{bx}" y="{by}" width="{32 * scale:.1f}" height="16" rx="3"/>')
+        fit = min(gib, 32) * scale
+        b.append(f'<rect x="{bx}" y="{by}" width="{fit:.1f}" height="16" rx="3" fill="{color}" opacity="0.85"/>')
+        if gib > 32:
+            b.append(f'<rect x="{bx + 32 * scale:.1f}" y="{by}" width="{(gib - 32) * scale:.1f}" height="16" rx="3" fill="{color}" opacity="0.35"/>')
+        gx = bx + 32 * scale
+        b.append(f'<line class="gpu" x1="{gx:.1f}" y1="{by - 8}" x2="{gx:.1f}" y2="{by + 24}" stroke-width="1.5" stroke-dasharray="3 3"/>')
+        b.append(text(gx, by - 12, "32 GB GPU", "m", 11, anchor="middle"))
+        b.append(text(bx, by + 44, f"{gib:.0f} GB · {line2}", size=13, weight=600, fill=color))
+    for i in range(2):
+        ax = 40 + cw + i * (cw + gap) + 12
+        ay = top + ch / 2
+        b.append(f'<path d="M{ax} {ay} h{gap - 24}" class="gpu" stroke-width="2" fill="none"/>')
+        b.append(f'<path d="M{ax + gap - 24} {ay - 6} l8 6 l-8 6 z" class="t"/>')
+    path.write_text(svg(w, h, b))
+
+
+# ── how it works ────────────────────────────────────────────────────────────────────────────────
+
+STEPS = (
+    ("Recipe", ["a short YAML file: which", "format and encoder each", "part of the model gets"]),
+    ("Build", ["turn the original weights", "into a real checkpoint"]),
+    ("Audit", ["prove the checkpoint holds", "only legal encodings of", "the original weights"]),
+    ("Measure", ["quality, speed and memory", "on the real RTX 5090"]),
+    ("Frontier", ["kept only if nothing else", "beats it on every measure"]),
+)
+
+
+def how_it_works(path: Path) -> None:
+    w, h = 1200, 200
+    step = (w - 80) / len(STEPS)
+    cy = 52
+    b = [f'<line class="rule" x1="{40 + step / 2}" y1="{cy}" x2="{40 + step * (len(STEPS) - 0.5)}" y2="{cy}" stroke-width="2"/>']
+    for i, (title, lines) in enumerate(STEPS):
+        cx = 40 + step * (i + 0.5)
+        last = i == len(STEPS) - 1
+        b.append(f'<circle cx="{cx}" cy="{cy}" r="18" fill="{"#8b5cf6" if last else "#5b8def"}"/>')
+        b.append(text(cx, cy + 5, str(i + 1), size=15, weight=700, anchor="middle", fill="#ffffff"))
+        b.append(text(cx, cy + 50, title, size=16, weight=600, anchor="middle"))
+        for j, line in enumerate(lines):
+            b.append(text(cx, cy + 74 + j * 19, line, "m", 13, anchor="middle"))
+    path.write_text(svg(w, h, b))
+
+
+# ── recipes ─────────────────────────────────────────────────────────────────────────────────────
+
+
+def _layers(manifest: Manifest) -> dict[tuple[str, int], str]:
+    """(row, layer) → assignment key. Row "mixer" is the GDN or attention block, "mlp" the MLP."""
     units = Qwen38Arch().units()
     asg = manifest.expand_assignments(units)
     cells: dict[tuple[str, int], str] = {}
     for u in units:
         if u.layer is None:
             continue
-        row = "attn" if u.kind == "attn" else u.role
+        row = "mlp" if u.kind == "mlp" else "mixer"
         key = f"{asg[u.id].format}@{asg[u.id].quantizer}"
-        # attention has four units per layer: a cell shows a non-default assignment if any unit has one
         prev = cells.get((row, u.layer))
-        if prev is None or (prev == "NVFP4@baseline" and key != prev):
+        if prev is None or (prev.startswith("NVFP4@") and not key.startswith("NVFP4@")) or (prev == "NVFP4@baseline" and key != prev):
             cells[(row, u.layer)] = key
-    return cells, f"{asg['lm_head'].format}@{asg['lm_head'].quantizer}"
+    return cells
 
 
-def layer_map(manifest: Manifest, title: str, subtitle: str, path: Path, legend: bool = True) -> None:
-    cells, head = _cells(manifest)
-    cw, ch, gap = 13, 18, 2
-    left, top = 118, 58
-    width = left + 64 * (cw + gap) + 70
-    height = top + len(ROWS) * (ch + gap) + (70 if legend else 34)
-    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
-             f'font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif">',
-             f'<rect width="100%" height="100%" rx="14" fill="{BG}"/>',
-             f'<text x="20" y="26" fill="{FG}" font-size="15" font-weight="700">{title}</text>',
-             f'<text x="20" y="45" fill="{MUTED}" font-size="11">{subtitle}</text>']
-    for r, (label, key) in enumerate(ROWS):
-        y = top + r * (ch + gap)
-        parts.append(f'<text x="{left - 10}" y="{y + ch - 5}" fill="{MUTED}" font-size="11" text-anchor="end">{label}</text>')
-        for layer in range(64):
-            x = left + layer * (cw + gap)
-            k = cells.get((key, layer))
-            if k is None:
-                parts.append(f'<rect x="{x}" y="{y}" width="{cw}" height="{ch}" rx="2" fill="{GRID}" opacity="0.45"/>')
-            else:
-                parts.append(f'<rect x="{x}" y="{y}" width="{cw}" height="{ch}" rx="2" fill="{COLORS[k][0]}"/>')
-    hx = left + 64 * (cw + gap) + 14
-    parts.append(f'<rect x="{hx}" y="{top}" width="{cw + 8}" height="{len(ROWS) * (ch + gap) - gap}" rx="3" fill="{COLORS[head][0]}"/>')
-    parts.append(f'<text x="{hx + 10}" y="{top - 8}" fill="{MUTED}" font-size="10" text-anchor="middle">head</text>')
-    ybase = top + len(ROWS) * (ch + gap) + 14
+def recipes(path: Path, entries: list[tuple[str, str, str, list[tuple[str, str]]]]) -> None:
+    """entries: (manifest name, title, description, [(result text, color)])."""
+    arch = Qwen38Arch()
+    attention = {u.layer for u in arch.units() if u.kind == "attn"}
+    w, left, cw, cg, rh, block = 1200, 330, 11, 2, 18, 124
+    h = 104 + block * len(entries) + 30
+    b = [text(40, 42, "Same model, different recipes", size=20, weight=700),
+         text(40, 66, "One column is one of the 64 layers. Top row: the layer's attention or recurrent block. Bottom row: its MLP.", "m", 13)]
     for layer in (0, 16, 32, 48, 63):
-        parts.append(f'<text x="{left + layer * (cw + gap) + cw / 2}" y="{ybase}" fill="{MUTED}" font-size="10" text-anchor="middle">L{layer}</text>')
-    if legend:
-        lx = 20
-        for color, label in COLORS.values():
-            parts.append(f'<rect x="{lx}" y="{ybase + 18}" width="12" height="12" rx="2" fill="{color}"/>')
-            parts.append(f'<text x="{lx + 18}" y="{ybase + 28}" fill="{FG}" font-size="11">{label}</text>')
-            lx += 36 + 6.2 * len(label)
-    parts.append("</svg>")
-    path.write_text("\n".join(parts) + "\n")
+        b.append(text(left + layer * (cw + cg) + cw / 2, 92, f"layer {layer}", "m", 11, anchor="middle"))
+    variants = REPO / "experiments/feasibility/variants"
+    used: set[str] = set()
+    for i, (name, title, desc, results) in enumerate(entries):
+        y = 104 + i * block
+        if i:
+            b.append(f'<line class="rule" x1="40" y1="{y - 12}" x2="{w - 40}" y2="{y - 12}"/>')
+        b.append(text(40, y + 16, title, size=15, weight=600))
+        b.append(text(40, y + 37, desc, "m", 13))
+        for j, (s, color) in enumerate(results):
+            b.append(text(40, y + 62 + j * 19, s, size=13, weight=600, fill=color))
+        cells = _layers(Manifest.load(variants / f"{name}.yaml"))
+        used.update(cells.values())
+        for r, row in enumerate(("mixer", "mlp")):
+            ry = y + 4 + r * (rh + 6)
+            for layer in range(64):
+                x = left + layer * (cw + cg)
+                color = FORMATS[cells[(row, layer)]][0]
+                if row == "mixer" and layer in attention:
+                    b.append(f'<rect x="{x + 1}" y="{ry + 1}" width="{cw - 2}" height="{rh - 2}" rx="2" fill="none" stroke="{color}" stroke-width="2"/>')
+                else:
+                    b.append(f'<rect x="{x}" y="{ry}" width="{cw}" height="{rh}" rx="2" fill="{color}"/>')
+    ly = h - 24
+    lx = 40
+    seen = []
+    for key, (color, label) in FORMATS.items():
+        if label in seen or key not in used:
+            continue
+        seen.append(label)
+        b.append(f'<rect x="{lx}" y="{ly - 11}" width="12" height="12" rx="2" fill="{color}"/>')
+        b.append(text(lx + 18, ly, label, "m", 13))
+        lx += 18 + 7.4 * len(label) + 24
+    b.append(f'<rect x="{lx}" y="{ly - 11}" width="12" height="12" rx="2" fill="none" class="gpu" stroke-width="1.5"/>')
+    b.append(text(lx + 18, ly, "outlined = attention layer, filled = recurrent layer", "m", 13))
+    path.write_text(svg(w, h, b))
 
 
-EXAMPLE = {
-    "schema": "bittrellis/manifest@2", "track": "HPC-01", "name": "readme-example", "default": "NVFP4",
-    "rules": [{"match": "L*.mlp", "layers": "0-55", "format": "NVFP4", "quantizer": "unsloth"},
-              {"match": "L*.gdn.qkv", "layers": "48-63", "format": "FP8"},
-              {"match": "L*.mlp", "layers": "60-63", "format": "Q4_K"}],
-}
-
-
-def banner(path: Path) -> None:
-    """Title banner whose trellis is a real, legal mixed recipe rendered unit by unit."""
-    cells, head = _cells(Manifest.from_dict(EXAMPLE))
-    w, h = 1200, 320
-    cw, ch, gap = 6, 22, 2
-    x0, y0 = 640, 70
-    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
-             f'font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif">',
-             '<defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#60a5fa"/>'
-             '<stop offset="1" stop-color="#c084fc"/></linearGradient></defs>',
-             f'<rect width="100%" height="100%" rx="18" fill="{BG}"/>']
-    for r, (_, key) in enumerate(ROWS):
-        y = y0 + r * (ch + 8)
-        for layer in range(64):
-            x = x0 + layer * (cw + gap)
-            k = cells.get((key, layer))
-            fill, op = (COLORS[k][0], 1.0) if k else (GRID, 0.6)
-            parts.append(f'<rect x="{x}" y="{y}" width="{cw}" height="{ch}" rx="1.5" fill="{fill}" opacity="{op}"/>')
-    hx = x0 + 64 * (cw + gap) + 10
-    parts.append(f'<rect x="{hx}" y="{y0}" width="14" height="{len(ROWS) * (ch + 8) - 8}" rx="3" fill="{COLORS[head][0]}"/>')
-    parts.append(f'<text x="{hx + 7}" y="{y0 - 10}" fill="{MUTED}" font-size="10" text-anchor="middle">head</text>')
-    parts.append(f'<text x="{x0}" y="{y0 - 10}" fill="{MUTED}" font-size="10">layer 0</text>')
-    parts.append(f'<text x="{x0 + 63 * (cw + gap) + cw}" y="{y0 - 10}" fill="{MUTED}" font-size="10" text-anchor="end">layer 63</text>')
-    ly = y0 + len(ROWS) * (ch + 8) + 16
-    lx = x0
-    for key, label in (("NVFP4@baseline", "NVFP4"), ("NVFP4@unsloth", "NVFP4 calibrated"), ("FP8@rtn", "FP8"), ("Q4_K@runtime", "Q4_K")):
-        parts.append(f'<rect x="{lx}" y="{ly}" width="11" height="11" rx="2" fill="{COLORS[key][0]}"/>')
-        parts.append(f'<text x="{lx + 16}" y="{ly + 10}" fill="{FG}" font-size="11">{label}</text>')
-        lx += 34 + 6.2 * len(label)
-    parts.append(f'<text x="{x0}" y="{ly + 34}" fill="{MUTED}" font-size="11">one square = one part of one layer · a real, legal recipe</text>')
-    parts += [
-        '<text x="52" y="128" fill="url(#g)" font-size="62" font-weight="800" letter-spacing="-1">BitTrellis</text>',
-        f'<text x="54" y="172" fill="{FG}" font-size="22" font-weight="600">Every layer doesn\'t deserve the same bits.</text>',
-        f'<text x="54" y="206" fill="{MUTED}" font-size="16">Find the best compressed LLM for the GPU you actually run.</text>',
-        f'<text x="54" y="268" fill="{MUTED}" font-size="13">Qwen3.8-27B · 1× RTX 5090 · SparkInfer · measured on real hardware</text>',
-        "</svg>",
-    ]
-    path.write_text("\n".join(parts) + "\n")
-
+# ── scorecard ───────────────────────────────────────────────────────────────────────────────────
 
 LABELS = {
-    "V0-baseline-rebuild": "V0 · today's shipped checkpoint",
-    "V1-all-q4k": "V1 · everything Q4_K",
-    "V3-gdn-fp8": "V3 · recurrent path FP8",
-    "V4-gdn-q4k": "V4 · recurrent path Q4_K",
-    "V5-attn-q4k": "V5 · attention Q4_K",
-    "V6-mlp-q4k": "V6 · MLP Q4_K",
-    "V7-mlp-q4k-early": "V7 · early MLP Q4_K",
-    "V9-gdn-q4k-mlp-q4k": "V9 · recurrent + MLP Q4_K",
-    "V13-mlp-unsloth-bytes": "V13 · calibrated MLP encoder",
+    "V1-all-q4k": "everything Q4_K",
+    "V3-gdn-fp8": "recurrent layers FP8",
+    "V4-gdn-q4k": "recurrent layers Q4_K",
+    "V5-attn-q4k": "attention Q4_K",
+    "V6-mlp-q4k": "MLP Q4_K",
+    "V7-mlp-q4k-early": "MLP Q4_K, first half",
+    "V9-gdn-q4k-mlp-q4k": "recurrent + MLP Q4_K",
+    "V13-mlp-unsloth-bytes": "calibrated MLP encoder",
+    "R1": "unsloth NVFP4 checkpoint",
+    "R2": "llama.cpp, UD-Q4_K_M GGUF",
 }
 
 
-def _label(row: dict) -> str:
-    if row["kind"] == "external":
-        return {"R1": "unsloth checkpoint (external)", "R2": "llama.cpp best GGUF (external)"}.get(row["id"], row["name"])
-    return LABELS.get(row["name"], row["name"])
+def _pct(x: float) -> str:
+    if abs(x) < 0.0005:
+        return "0%"
+    digits = 1 if abs(x) < 0.01 else 0
+    return f"{'+' if x > 0 else '−'}{abs(x) * 100:.{digits}f}%"
 
 
-def quality_chart(frontier: dict, path: Path) -> None:
-    """Horizontal bars: how far each checkpoint's answers drift from the original model (lower is better)."""
-    rows = sorted(frontier["internal"] + frontier["external"], key=lambda r: r["rp_kl"])
+def scorecard(path: Path, frontier: dict, analysis: dict, floors: dict) -> None:
     inc = next(r for r in frontier["internal"] if r["name"] == frontier["incumbent"])
-    w, left, bar_h, gap, top = 1100, 300, 22, 10, 86
-    h = top + len(rows) * (bar_h + gap) + 60
-    scale = (w - left - 170) / max(r["rp_kl"] for r in rows)
-    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
-             f'font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif">',
-             f'<rect width="100%" height="100%" rx="16" fill="{BG}"/>',
-             f'<text x="24" y="36" fill="{FG}" font-size="19" font-weight="700">How far does each checkpoint drift from the original model?</text>',
-             f'<text x="24" y="60" fill="{MUTED}" font-size="12">Reference-Partition KL vs BF16 on 21,624 scored tokens · shorter bar = answers closer to the original · measured on one RTX 5090</text>']
-    for i, r in enumerate(rows):
-        y = top + i * (bar_h + gap)
-        length = r["rp_kl"] * scale
-        if r["kind"] == "external":
-            fill, stroke, op = "none", "#94a3b8", 1
-        elif r["name"] == frontier["incumbent"]:
-            fill, stroke, op = "#64748b", "none", 1
+    vs = analysis["vs_incumbent"]
+
+    def cells(r: dict) -> list[tuple[float, str, str]]:
+        """(bar value as a fraction, label, color); positive = better than V0."""
+        key = r["id"] if r["kind"] == "external" else r["name"]
+        q = -(r["rp_kl"] - inc["rp_kl"]) / inc["rp_kl"]
+        q_same = not vs[key]["rp_kl"]["significant"]
+        d = r["decode_tps"] / inc["decode_tps"] - 1
+        p = r["prefill_tps"] / inc["prefill_tps"] - 1
+        m = r["peak_gpu_gib"] - inc["peak_gpu_gib"]
+        mem_same = abs(m) < floors["peak_gpu_gib"]
+        return [
+            (q, _pct(q), SAME if q_same else (BETTER if q > 0 else WORSE)),
+            (d, _pct(d), SAME if abs(d) < floors["decode_tps"] else (BETTER if d > 0 else WORSE)),
+            (p, _pct(p), SAME if abs(p) < floors["prefill_tps"] else (BETTER if p > 0 else WORSE)),
+            (-m / 10, "same" if mem_same else f"{'+' if m > 0 else '−'}{abs(m):.1f} GB", SAME if mem_same else (BETTER if m < 0 else WORSE)),
+        ]
+
+    internal = sorted((r for r in frontier["internal"] if r["name"] != inc["name"]), key=lambda r: r["rp_kl"])
+    external = sorted(frontier["external"], key=lambda r: r["rp_kl"])
+    w, left, colw, rowh = 1200, 330, 210, 36
+    top = 150
+    h = top + rowh * (len(internal) + len(external)) + 56 + 64
+    cols = ("Closeness to original", "Generation speed", "Prompt reading, 4K", "GPU memory")
+    b = [text(40, 42, "Every measured recipe, compared with today's checkpoint", size=20, weight=700),
+         text(40, 66, f"Today's checkpoint (V0): {inc['decode_tps']:.0f} tokens/s generation · {inc['prefill_tps']:,.0f} tokens/s prompt reading · "
+                      f"{inc['peak_gpu_gib']:.0f} GB peak memory. One RTX 5090, 2 runs each.", "m", 13)]
+    for c, name in enumerate(cols):
+        cx = left + c * colw + colw / 2
+        b.append(text(cx, 118, name, size=13, weight=600, anchor="middle"))
+    b.append(f'<line class="rule" x1="40" y1="130" x2="{w - 40}" y2="130"/>')
+
+    def row(y: float, label: str, sub: str, r: dict, star: bool = False) -> None:
+        if star:
+            b.append(text(40, y + 5, "★", size=14, weight=600))
+        b.append(text(60, y + 5, label, size=14, weight=600))
+        b.append(text(106, y + 5, sub, "m", 13))
+        for c, (v, s, color) in enumerate(cells(r)):
+            cx = left + c * colw + colw / 2
+            half = 62
+            length = max(min(abs(v) / 0.6, 1.0) * half, 2)
+            x0 = cx if v >= 0 else cx - length
+            b.append(f'<rect class="track" x="{cx - half}" y="{y - 6}" width="{2 * half}" height="12" rx="2"/>')
+            b.append(f'<rect x="{x0:.1f}" y="{y - 6}" width="{length:.1f}" height="12" rx="2" fill="{color}"/>')
+            b.append(f'<line class="gpu" x1="{cx}" y1="{y - 10}" x2="{cx}" y2="{y + 10}" stroke-width="1"/>')
+            b.append(text(cx + half + 8, y + 5, s, size=12, weight=600, fill=color))
+
+    y = top
+    for r in internal:
+        row(y, r["name"].split("-")[0], LABELS.get(r["name"], ""), r, star=r["frontier"])
+        y += rowh
+    y += 18
+    b.append(f'<line class="rule" x1="40" y1="{y - 16}" x2="{w - 40}" y2="{y - 16}"/>')
+    b.append(text(40, y + 4, "Outside references, for context only (not ranked)", "m", 13, weight=600))
+    y += 34
+    for r in external:
+        row(y, r["id"], LABELS.get(r["id"], r["name"]), r)
+        y += rowh
+    ly = h - 26
+    lx = 40
+    for color, label in ((BETTER, "better than today"), (WORSE, "worse than today"), (SAME, "within measurement noise"), (None, "★ on the frontier: nothing measured beats it on every measure")):
+        if color:
+            b.append(f'<rect x="{lx}" y="{ly - 10}" width="12" height="12" rx="2" fill="{color}"/>')
+            b.append(text(lx + 18, ly, label, "m", 13))
+            lx += 18 + 7.2 * len(label) + 26
         else:
-            fill, stroke, op = ("#a855f7" if r["frontier"] else "#3b82f6"), "none", (1 if r["valid"] else 0.4)
-        parts.append(f'<text x="{left - 12}" y="{y + bar_h - 6}" fill="{FG if r["kind"] == "internal" else MUTED}" '
-                     f'font-size="13" text-anchor="end">{_label(r)}</text>')
-        parts.append(f'<rect x="{left}" y="{y}" width="{length:.1f}" height="{bar_h}" rx="4" fill="{fill}" stroke="{stroke}" '
-                     f'stroke-width="1.5" stroke-dasharray="{"4 3" if r["kind"] == "external" else "0"}" opacity="{op}"/>')
-        delta = (r["rp_kl"] - inc["rp_kl"]) / inc["rp_kl"]
-        tag = "today" if r["name"] == frontier["incumbent"] else f"{abs(delta) * 100:.0f}% {'closer' if delta < 0 else 'further'}"
-        color = "#22c55e" if delta < -0.02 else ("#f87171" if delta > 0.02 else MUTED)
-        parts.append(f'<text x="{left + length + 10}" y="{y + bar_h - 6}" fill="{color if r["name"] != frontier["incumbent"] else MUTED}" '
-                     f'font-size="12" font-weight="600">{r["rp_kl"]:.3f} · {tag}</text>')
-    ly = h - 22
-    for x, fill, stroke, label in ((24, "#a855f7", "none", "on the frontier"), (170, "#3b82f6", "none", "measured seed"),
-                                   (310, "#64748b", "none", "today's checkpoint"), (470, "none", "#94a3b8", "external reference, not ranked")):
-        parts.append(f'<rect x="{x}" y="{ly - 10}" width="14" height="12" rx="2" fill="{fill}" stroke="{stroke}" stroke-dasharray="3 2"/>')
-        parts.append(f'<text x="{x + 20}" y="{ly}" fill="{MUTED}" font-size="12">{label}</text>')
-    parts.append("</svg>")
-    path.write_text("\n".join(parts) + "\n")
-
-
-def tradeoff_chart(frontier: dict, path: Path) -> None:
-    """Two scatter panels: closeness to the original vs speed, and vs GPU memory."""
-    rows = frontier["internal"] + frontier["external"]
-    w, h = 1100, 430
-    panels = (("decode_tps", "generation speed (tokens/s) →  faster", False), ("peak_gpu_gib", "← less GPU memory (GiB)", True))
-    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" '
-             f'font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif">',
-             f'<rect width="100%" height="100%" rx="16" fill="{BG}"/>',
-             f'<text x="24" y="36" fill="{FG}" font-size="19" font-weight="700">Quality vs speed, quality vs memory</text>',
-             f'<text x="24" y="58" fill="{MUTED}" font-size="12">up = closer to the original model · purple = frontier (nothing measured beats it on every axis) · hollow = external, not ranked</text>']
-    kl_max = max(r["rp_kl"] for r in rows) * 1.08
-    kl_min = min(r["rp_kl"] for r in rows) * 0.9
-    for p_i, (key, xlabel, invert) in enumerate(panels):
-        px, py, pw, ph = 70 + p_i * 520, 84, 440, 290
-        vals = [r[key] for r in rows]
-        lo, hi = min(vals), max(vals)
-        pad = (hi - lo) * 0.12 or 1
-        lo, hi = lo - pad, hi + pad
-        parts.append(f'<rect x="{px}" y="{py}" width="{pw}" height="{ph}" fill="none" stroke="{GRID}"/>')
-        for t in range(5):
-            gy = py + ph * t / 4
-            parts.append(f'<line x1="{px}" y1="{gy}" x2="{px + pw}" y2="{gy}" stroke="{GRID}" stroke-width="0.6"/>')
-        parts.append(f'<text x="{px + pw / 2}" y="{py + ph + 32}" fill="{MUTED}" font-size="12" text-anchor="middle">{xlabel}</text>')
-        parts.append(f'<text x="{px - 44}" y="{py + ph / 2}" fill="{MUTED}" font-size="12" text-anchor="middle" '
-                     f'transform="rotate(-90 {px - 44} {py + ph / 2})">↑ closer to original</text>')
-        for v in (lo + pad, hi - pad):
-            vx = px + (v - lo) / (hi - lo) * pw
-            vx = px + pw - (vx - px) if invert else vx
-            parts.append(f'<text x="{vx}" y="{py + ph + 16}" fill="{MUTED}" font-size="10" text-anchor="middle">{v:.1f}</text>')
-        for r in rows:
-            x = px + (r[key] - lo) / (hi - lo) * pw
-            x = px + pw - (x - px) if invert else x
-            y = py + (r["rp_kl"] - kl_min) / (kl_max - kl_min) * ph  # lowest RP-KL (closest to BF16) at the top
-            if r["kind"] == "external":
-                parts.append(f'<rect x="{x - 6}" y="{y - 6}" width="12" height="12" fill="none" stroke="#94a3b8" stroke-width="1.6"/>')
-            else:
-                color = "#64748b" if r["name"] == frontier["incumbent"] else ("#a855f7" if r["frontier"] else "#3b82f6")
-                parts.append(f'<circle cx="{x}" cy="{y}" r="{7 if r["frontier"] else 5}" fill="{color}" opacity="{1 if r["valid"] else 0.4}"/>')
-            tag = r["id"] if r["kind"] == "external" else r["name"].split("-")[0]
-            parts.append(f'<text x="{x + 9}" y="{y + 4}" fill="{MUTED}" font-size="10">{tag}</text>')
-    parts.append("</svg>")
-    path.write_text("\n".join(parts) + "\n")
+            b.append(text(lx, ly, label, "m", 13))
+    path.write_text(svg(w, h, b))
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    banner(OUT / "banner.svg")
-    variants = REPO / "experiments/feasibility/variants"
-    maps = {
-        "V0-baseline-rebuild": ("Today: one recipe everywhere", "the shipped checkpoint (V0): every part NVFP4 with the same encoder"),
-        "V13-mlp-unsloth-bytes": ("Same format, better encoder", "V13: MLP layers 0-55 use calibrated NVFP4 bytes; speed and memory unchanged"),
-        "V3-gdn-fp8": ("Protect the recurrent path", "V3: every Gated DeltaNet projection at FP8; better long-context fidelity, slower decode"),
-        "V7-mlp-q4k-early": ("Trade prefill for memory", "V7: MLP layers 0-31 as Q4_K; less GPU memory, slower prompt reading"),
-    }
-    for name, (title, sub) in maps.items():
-        layer_map(Manifest.load(variants / f"{name}.yaml"), title, sub, OUT / f"layers-{name}.svg")
-    frontier_json = REPO / "results/feasibility/frontier.json"
-    if frontier_json.exists():
-        import json
+    for stale in OUT.glob("*.svg"):
+        stale.unlink()
+    frontier = json.loads((RESULTS / "frontier.json").read_text())
+    analysis = json.loads((RESULTS / "analysis.json").read_text())
+    floors = yaml.safe_load((REPO / "configs/hpc01.yaml").read_text())["frontier"]["epsilon_floor"]
+    rows = {r["name"]: r for r in frontier["internal"]}
+    inc = rows[frontier["incumbent"]]
 
-        frontier = json.loads(frontier_json.read_text())
-        quality_chart(frontier, OUT / "results-quality.svg")
-        tradeoff_chart(frontier, OUT / "results-tradeoffs.svg")
-        print("wrote results charts")
-    print(f"wrote {len(maps) + 1} SVGs to {OUT}")
+    hero(OUT / "hero.svg", inc["peak_gpu_gib"])
+    how_it_works(OUT / "how-it-works.svg")
+
+    def result(name: str) -> list[tuple[str, str]]:
+        r = rows[name]
+        out = [(f"{-(r['rp_kl'] / inc['rp_kl'] - 1) * 100:.0f}% closer to the original", BETTER)]
+        for key, what, floor in (("decode_tps", "generation", floors["decode_tps"]), ("prefill_tps", "prompt reading", floors["prefill_tps"])):
+            rel = r[key] / inc[key] - 1
+            if rel < -floor:
+                out.append((f"{-rel * 100:.0f}% slower {what}", WORSE))
+        return out
+
+    recipes(OUT / "recipes.svg", [
+        ("V0-baseline-rebuild", "V0 · today's checkpoint", "the standard NVFP4 encoder everywhere", [("the baseline for every comparison", SAME)]),
+        ("V13-mlp-unsloth-bytes", "V13 · better encoder for the MLP", "calibrated bytes, MLP layers 0–55", result("V13-mlp-unsloth-bytes")),
+        ("V3-gdn-fp8", "V3 · more bits for recurrent layers", "FP8 on every recurrent block", result("V3-gdn-fp8")),
+    ])
+    scorecard(OUT / "scorecard.svg", frontier, analysis, floors)
+    print(f"wrote {len(list(OUT.glob('*.svg')))} SVGs to {OUT}")
 
 
 if __name__ == "__main__":
