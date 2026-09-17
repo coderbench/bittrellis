@@ -9,6 +9,18 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
 id "$USER_NAME" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$USER_NAME"
 
+# No outbound network for contributed code: a build must not be able to upload what a later step reads back.
+UID_NUM="$(id -u "$USER_NAME")"
+if command -v iptables >/dev/null 2>&1; then
+  iptables -C OUTPUT -m owner --uid-owner "$UID_NUM" -j REJECT 2>/dev/null \
+    || iptables -A OUTPUT -m owner --uid-owner "$UID_NUM" -j REJECT \
+    || echo "WARNING: could not add the firewall rule (container without NET_ADMIN?); quantizer PRs will be refused"
+  command -v ip6tables >/dev/null 2>&1 && { ip6tables -C OUTPUT -m owner --uid-owner "$UID_NUM" -j REJECT 2>/dev/null \
+    || ip6tables -A OUTPUT -m owner --uid-owner "$UID_NUM" -j REJECT || true; }
+else
+  echo "WARNING: iptables not found; block outbound traffic for $USER_NAME another way, or quantizer PRs will be refused"
+fi
+
 # Evaluator state: traversable to reach each PR's untrusted/ directory, readable by nobody else.
 mkdir -p "$BT_EVAL_ROOT/prs" "$BT_EVAL_ROOT/accepted" "$BT_EVAL_ROOT/observations"
 chown root:root "$BT_EVAL_ROOT" "$BT_EVAL_ROOT/prs"

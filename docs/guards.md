@@ -126,10 +126,15 @@ account `bt-sandbox` ([`evaluator/sandbox.py`](../evaluator/sandbox.py)):
   checkpoint. The trusted audit compares the regenerated tensors with the sealed checkpoint byte for
   byte, and never imports the contributed quantizer: it knows it only by name and version.
 - **Allow-listed environment.** `env -i` with `HOME`, `PATH`, `LANG` and no GPU. The GitHub token,
-  holdout path and secrets are not passed. After every step every process the account owns is killed.
+  holdout path and secrets are not passed. After every step every process the account owns is killed,
+  and everything it wrote to its home, `/tmp`, `/var/tmp` and `/dev/shm` is deleted, so nothing
+  stashed during the build survives into regeneration.
+- **No network.** The account's outbound traffic must be blocked (the setup script adds an `iptables`
+  owner rule); otherwise a build could upload its checkpoint and regeneration download it back.
 - **Refuses an unsafe host.** Before any contributed code runs, the bot checks that the account
-  cannot read `secret.txt`, `state.json` or the token file, and cannot read or write the private
-  holdout, accepted results or the first-seen record. It must be able to read the models. Failing any
+  cannot read `secret.txt`, `state.json` or the token file, cannot read or write the private
+  holdout, accepted results or the first-seen record, and cannot reach the network. It must be able
+  to read the models. Failing any
   check labels the PR `bt:eval-error` and nothing runs.
 - **A contributed quantizer needs a new name.** Changing an existing quantizer's bytes under the same
   name would make the trusted side run the old code; the audit fails such a PR.
@@ -151,8 +156,7 @@ State is in `<root>/state.json`. Errors (`bt:eval-error`) are retried up to thre
 
 ## Known limits
 
-- **The sandbox is an account, not a VM.** It shares the kernel and the network is not cut; add a
-  host firewall rule for `bt-sandbox` if the host can reach anything sensitive. `eval-approved` is
+- **The sandbox is an account, not a VM.** It shares the kernel with the evaluator. `eval-approved` is
   still a review, not a formality.
 - **Near-identical by accident.** Two miners may independently submit recipes within 2%. The later
   one is still measured and credited for what it adds, and one near-copy never triggers review.

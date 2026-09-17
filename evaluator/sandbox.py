@@ -15,8 +15,10 @@ Each step runs through `runuser` with an allow-listed environment and no GPU, in
 afterwards every process the account owns is killed. `problems()` refuses to run anything when the
 account can read a secret or write evaluator state. Set it up once with evaluator/setup_sandbox.sh.
 
-Limits: the network is not cut (use a host firewall for the sandbox account if you need that), and
-the account shares the machine's kernel.
+Between steps everything the account could have stashed (its home, /tmp, /var/tmp, /dev/shm) is
+wiped, and `problems()` requires the account's outbound network to be blocked
+(evaluator/setup_sandbox.sh adds the firewall rule): otherwise a build could upload its checkpoint and
+the regeneration step download it back. The account still shares the machine's kernel.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ import subprocess
 from pathlib import Path
 
 DEFAULT_USER = "bt-sandbox"
+SCRATCH = ("/tmp", "/var/tmp", "/dev/shm")
+NET_PROBE = "import socket; socket.create_connection(('1.1.1.1', 443), timeout=3); print('reachable')"
 ENV_ALLOW = ("LANG", "LC_ALL", "TZ")
 
 
@@ -64,6 +68,9 @@ class Sandbox:
         for p in readable:
             if not self._as_user("test", "-r", str(p)):
                 out.append(f"{self.user} cannot read {p} (the build needs it)")
+        probe = subprocess.run(["runuser", "-u", self.user, "--", "python3", "-c", NET_PROBE], capture_output=True, text=True, timeout=20)
+        if "reachable" in probe.stdout:
+            out.append(f"{self.user} can reach the network (block its outbound traffic: evaluator/setup_sandbox.sh)")
         return out
 
     def own(self, path: Path) -> None:
@@ -84,6 +91,12 @@ class Sandbox:
     def kill_all(self) -> None:
         subprocess.run(["pkill", "-KILL", "-u", self.user], capture_output=True)
 
+    def wipe(self) -> None:
+        """Delete everything the account owns in the places it can write outside a PR's untrusted/ tree."""
+        for d in (self.home, *SCRATCH):
+            if os.path.isdir(d):
+                subprocess.run(["find", d, "-mindepth", "1", "-user", self.user, "-delete"], capture_output=True)
+
     def run(self, cmd: list[str], cwd: Path, log: Path, python_bin: str, timeout: int = 6 * 3600) -> int:
         full = command(self.user, cmd, self.home, f"{python_bin}:/usr/local/bin:/usr/bin:/bin")
         with open(log, "a") as fh:
@@ -98,3 +111,4 @@ class Sandbox:
                 return 124
             finally:
                 self.kill_all()  # nothing the step started may outlive it
+                self.wipe()      # nor anything it stashed for a later step
