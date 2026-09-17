@@ -20,6 +20,17 @@
   docs/long/*.txt                   long filler for the 8K/16K/32K needle streams (≥ 60K tokens total)
 ```
 
+Add text a bit at a time; the inventory says what is still missing:
+
+```bash
+bittrellis holdout inventory --private /secure/holdout-2026w38
+#   category       files   tokens    needs  status
+#   general            3    7,412    4,096  ok
+#   math               0        0    4,096  needs 4,096 more tokens (~3,072 words)
+```
+
+Text must never have been published, and must not be model-generated: both make the check meaningless.
+
 ```bash
 bittrellis holdout build --private /secure/holdout-2026w38
 bittrellis reference --corpus /secure/holdout-2026w38/corpus.json --out /secure/holdout-2026w38/reference

@@ -56,6 +56,24 @@ def build_private_corpus(private_dir: Path, tokenizer_json: Path) -> dict:
     return body
 
 
+def inventory(private_dir: Path, tokenizer_json: Path) -> dict:
+    """What the holdout directory has and what it still needs, per category."""
+    from tokenizers import Tokenizer
+
+    from .eval.corpus import LONG_LENGTHS, SHORT_TOKENS
+
+    tok = Tokenizer.from_str(Path(tokenizer_json).read_text())
+    need = {cat: SHORT_TOKENS for cat in SHORT_CATEGORIES}
+    need["long"] = max(LONG_LENGTHS) * 2  # the 8K/16K/32K streams rotate through the long documents
+    out = {}
+    for cat, want in need.items():
+        files = sorted((Path(private_dir) / "docs" / cat).glob("*.txt"))
+        have = sum(len(tok.encode(f.read_text()).ids) for f in files)
+        out[cat] = {"files": len(files), "tokens": have, "needs": want, "missing": max(0, want - have)}
+    out["epoch"] = json.loads((Path(private_dir) / "epoch.json").read_text()) if (Path(private_dir) / "epoch.json").exists() else None
+    return out
+
+
 def check(si: SparkInfer, track: Track, checkpoint: Path, artifact: Path, private_dir: Path,
           incumbent_checkpoint: Path, incumbent_artifact: Path, log=print) -> str:
     """Score a candidate (and, once per epoch, the incumbent) on the private holdout; write PASS/FAIL."""

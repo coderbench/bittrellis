@@ -34,3 +34,25 @@ def test_verify_source_reports_missing_and_size(tmp_path):
     assert not res.ok and any("size" in e for e in res.errors)
     (tmp_path / "model.safetensors").unlink()
     assert any("missing" in e for e in verify_source("s", tmp_path, lock=lock).errors)
+
+
+def test_holdout_inventory_reports_what_is_missing(tmp_path):
+
+    from tokenizers import Tokenizer, models, pre_tokenizers
+
+    from bittrellis.holdout import inventory
+
+    tok = Tokenizer(models.WordLevel(vocab={"[UNK]": 0, "hello": 1, "world": 2}, unk_token="[UNK]"))
+    tok.pre_tokenizer = pre_tokenizers.Whitespace()
+    tok_path = tmp_path / "tokenizer.json"
+    tok_path.write_text(tok.to_str())
+    private = tmp_path / "holdout"
+    for cat in ("general", "math", "code", "tools", "multilingual", "long"):
+        (private / "docs" / cat).mkdir(parents=True)
+    (private / "docs/general/a.txt").write_text("hello world " * 3000)   # 6,000 tokens: enough
+    (private / "docs/math/a.txt").write_text("hello world " * 100)       # 200 tokens: not enough
+    inv = inventory(private, tok_path)
+    assert inv["general"]["missing"] == 0 and inv["general"]["files"] == 1
+    assert inv["math"]["missing"] == 4096 - 200
+    assert inv["code"]["files"] == 0 and inv["code"]["missing"] == 4096
+    assert inv["long"]["needs"] == 65536 and inv["epoch"] is None

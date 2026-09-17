@@ -352,6 +352,17 @@ def cmd_holdout(args) -> int:
     from .runtime import SparkInfer
 
     track = load_track(args.track)
+    if args.action == "inventory":
+        inv = holdout.inventory(Path(args.private), Path(args.shipped) / "tokenizer.json")
+        epoch = inv.pop("epoch")
+        print(f"epoch {epoch['epoch'] if epoch else 'MISSING epoch.json'}")
+        print(f"  {'category':14s} {'files':>5s} {'tokens':>8s} {'needs':>8s}  status")
+        for cat, d in inv.items():
+            state = "ok" if not d["missing"] else f"needs {d['missing']:,} more tokens (~{d['missing'] * 3 // 4:,} words)"
+            print(f"  {cat:14s} {d['files']:5d} {d['tokens']:8,d} {d['needs']:8,d}  {state}")
+        missing = sum(d["missing"] for d in inv.values())
+        print("ready to build" if not missing and epoch else "not ready: add the text above, and epoch.json with a secret seed")
+        return 0 if not missing and epoch else 1
     if args.action == "build":
         c = holdout.build_private_corpus(Path(args.private), Path(args.shipped) / "tokenizer.json")
         print(f"private holdout {c['version']}: {len(c['streams'])} streams, sha256 {c['sha256'][:16]}")
@@ -514,8 +525,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sp("evaluate-llamacpp", cmd_evaluate_llamacpp, "external reference R2 through pinned llama.cpp", "llamacpp", "corpus", "reference")
     p.add_argument("--gguf", default=str(REPO_ROOT / "models/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_M.gguf"))
     p.add_argument("--out", required=True)
-    p = sp("holdout", cmd_holdout, "validators: build the private holdout or check a candidate (PASS/FAIL)", "shipped", "sparkinfer")
-    p.add_argument("action", choices=["build", "check"])
+    p = sp("holdout", cmd_holdout, "validators: inventory or build the private holdout, or check a candidate (PASS/FAIL)", "shipped", "sparkinfer")
+    p.add_argument("action", choices=["inventory", "build", "check"])
     p.add_argument("--private", required=True)
     p.add_argument("checkpoint", nargs="?")
     p.add_argument("--artifact")
