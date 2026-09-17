@@ -1,37 +1,29 @@
 # Rewards: from a measured result to TAO
 
-BitTrellis is scored on [Gittensor](https://github.com/entrius/gittensor) (Bittensor subnet 74).
-Gittensor does not read our frontier numbers. It pays a **merged** pull request by **one label**
-that the evaluator applies. This page explains how a measured result becomes that label, and what
-that label is worth.
+> [Gittensor](https://github.com/entrius/gittensor) (Bittensor subnet 74) pays a merged PR by one `eval:*` label. This page shows how your result earns that label and what it is worth.
 
-## How Gittensor pays a pull request
-
-For a repository with an evaluator, Gittensor's validators compute each merged PR's score as
+## How Gittensor pays
 
 ```text
 earned = fixed_base_score × label multiplier × time decay × review factor × open-PR spam factor
 ```
 
-([`oss_contributions/scoring.py`](https://github.com/entrius/gittensor/blob/main/gittensor/validator/oss_contributions/scoring.py),
-[`label_resolution.py`](https://github.com/entrius/gittensor/blob/main/gittensor/validator/oss_contributions/label_resolution.py)).
-A miner's share of the repository's emission is their earned score against everyone else's.
+Source: [`scoring.py`](https://github.com/entrius/gittensor/blob/main/gittensor/validator/oss_contributions/scoring.py),
+[`label_resolution.py`](https://github.com/entrius/gittensor/blob/main/gittensor/validator/oss_contributions/label_resolution.py).
+Your emission share: your earned score against everyone else's.
 
-| Factor | What it means for a BitTrellis miner |
+| Factor | For a miner |
 |---|---|
-| **Merged only** | an open PR earns nothing; it only reserves collateral (20% of its potential score) |
-| **Label multiplier** | the `eval:*` tier below; no tier label means ×0 |
-| **Time decay** | a merged PR loses half its score about 10 days after merge |
-| **Review factor** | each maintainer "changes requested" review lowers the score |
-| **Credibility gate** | merged ÷ (merged + closed) must stay ≥ 0.2, so closed PRs count against you |
+| **Merged only** | an open PR earns nothing; it reserves collateral (20% of its potential score) |
+| **Label multiplier** | the tier below (`label_multipliers` in the registry entry); no tier label means ×0 |
+| **Time decay** | half the score is gone about 10 days after merge |
+| **Review factor** | each maintainer "changes requested" review lowers it |
+| **Credibility gate** | merged ÷ (merged + closed) must stay ≥ 0.2: closed PRs count against you |
 | **Spam factor** | too many open PRs in the repository sets your score there to 0 |
 
 ## Tiers
 
-The evaluator buckets the PR's measured frontier gain (FG-2: the quality × speed × memory space it
-adds on top of every earlier result) into the same `eval:*` tiers SparkInfer uses. Thresholds live in
-`rewards.tiers_fg2` in [`configs/hpc01.yaml`](../configs/hpc01.yaml) and are calibrated to the
-measured seeds:
+FG-2 ([key terms](../README.md#key-terms)) buckets into SparkInfer's tiers. Thresholds: `rewards.tiers_fg2` in [`configs/hpc01.yaml`](../configs/hpc01.yaml), calibrated to the seeds.
 
 | Label | FG-2 | Proposed multiplier | Seed at this level |
 |---|---|---:|---|
@@ -43,30 +35,23 @@ measured seeds:
 | ![eval:none](https://img.shields.io/badge/eval%3Anone-bfc5cc?style=flat-square) | 0: dominated, or a duplicate | ×0 | V3, V7, V9 |
 | ![eval:REJECT](https://img.shields.io/badge/eval%3AREJECT-b60205?style=flat-square) | failed a gate, the audit or a screen | ×0 | — |
 
-- A PR waiting in the queue, for approval or for a maintainer has **no** tier label yet.
-- The tier is computed against earlier open PRs by other authors and against merged results, so a
-  near-copy earns only the tier of what it adds ([guards.md](guards.md)).
-- The multipliers are a **proposal**: the Gittensor team sets them in its registry.
+- A PR still waiting (queue, approval, maintainer) has **no** tier label.
+- FG-2 counts merged results and earlier open PRs by other authors: a near-copy earns only what it adds ([guards.md](guards.md)).
 
 ## Merging
 
-Merging is the moment of payment, so it is a maintainer's decision, never the bot's.
+Merging is payment, so a maintainer merges, never the bot.
 
-1. Every pass the bot re-ranks open results and marks **one** `bt:merge-first`: the highest tier, then the
-   largest FG-2, then the one observed first.
-2. A maintainer reviews and merges it.
-3. The merged result joins the frontier. On the next pass every other open result is re-ranked against it, and its
-   tier label is updated. A PR whose gain the merge already covered drops to `eval:none`.
-4. **A merged PR's tier is final.** The bot never relabels a merged PR.
+1. Each pass the bot marks **one** open result `bt:merge-first`: highest tier, then largest FG-2, then first observed.
+2. A maintainer reviews and merges it; it joins the frontier.
+3. Next pass, other open results are re-ranked against it; one whose gain the merge covered drops to `eval:none`.
+4. **A merged PR's tier is final**; the bot never relabels it.
 
-The bot never closes pull requests. Closing costs the author credibility on Gittensor, so a
-dominated or duplicate PR stays open until its author closes it. Authors should close PRs they are
-not pursuing: open PRs reserve collateral and count toward the spam limit.
+The bot never closes PRs (closing costs credibility); authors close dominated or duplicate PRs. Close PRs you are not pursuing: they reserve collateral and count toward the spam limit.
 
 ## Proposed registry entry
 
-For the Gittensor team's `gittensor/validator/weights/master_repositories.json`. `emission_share` is
-theirs to set; the rest mirrors the SparkInfer entry, with this repository's tier labels:
+For Gittensor's `gittensor/validator/weights/master_repositories.json`. The Gittensor team sets `emission_share` and the final multipliers; the rest mirrors SparkInfer's entry:
 
 ```json
 "coderbench/bittrellis": {
@@ -82,6 +67,4 @@ theirs to set; the rest mirrors the SparkInfer entry, with this repository's tie
 }
 ```
 
-`trusted_label_pipeline: true` makes Gittensor accept labels from the evaluator's account whatever
-its GitHub association. Only maintainers and the evaluator can apply labels in this repository, so
-miners cannot label their own PRs.
+`trusted_label_pipeline: true` accepts the evaluator account's labels whatever its GitHub association. Only maintainers and the evaluator can label here, so miners cannot label their own PRs.

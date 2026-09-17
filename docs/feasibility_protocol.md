@@ -1,11 +1,10 @@
 # Feasibility protocol (Phase 1–2)
 
-The question this experiment answers before any search engine is built:
-
 > **Can a non-uniform precision map produce a Qwen3.8-27B checkpoint that SparkInfer runs on one
 > RTX 5090 and that is not dominated by the checkpoint SparkInfer ships today?**
 
-Nothing about the answer is assumed. If it is no, the project stops.
+Answered before any search engine is built. Nothing is assumed: **if the answer is no, the project
+stops.** Terms: [README](../README.md#key-terms); GDN = Gated DeltaNet (recurrent layers).
 
 ## Fixed inputs
 
@@ -37,15 +36,14 @@ Everything is pinned in [`configs/hpc01.yaml`](../configs/hpc01.yaml):
 | Task guard | SparkInfer `bench/quality` benchmark tier (196 items) via `sparkinfer_server` | 1 (greedy) |
 | Checkpoint audit | sources hash-verified, lineage replayed | 1 |
 
-**Uncertainty.**
-- **Fidelity:** paired block bootstrap over positions against the incumbent V0 (block = 128). Scoring
-  is deterministic, and the incumbent re-score is checked byte for byte.
-- **Speed:** a difference counts only beyond max(floor, either result's two-run spread). Floors are
-  1% for decode and 3% for prefill.
+**Uncertainty**
 
-Epoch `hpc01-e1`, the first pass, used a top-64 estimate from SparkInfer's own score tool and
-single-process sweeps. Its conclusions were re-measured under e2, and the committed seed artifacts
-are e2.
+- **Fidelity:** paired block bootstrap over positions against the incumbent V0 (block = 128). Scoring is deterministic, and the incumbent re-score is checked byte for byte.
+- **Speed:** a difference counts only beyond max(floor, either result's two-run spread). Floors: 1% decode, 3% prefill.
+
+**Earlier epoch.** `hpc01-e1`, the first pass, used a top-64 estimate from SparkInfer's own score
+tool and single-process sweeps. Its conclusions were re-measured under e2; the committed seed
+artifacts are e2.
 
 ## Variants
 
@@ -67,8 +65,8 @@ checkpoint rebuilt byte for byte.
 ### Follow-ups (added after the first pass, before the verdict)
 
 The first pass raised three questions: GDN FP8 (V3) bought quality at a speed cost, and unsloth's
-checkpoint beat it on KL with the same GDN precision. These variants were added to answer them.
-They are labelled as post-hoc, and the verdict rule below was not changed.
+checkpoint beat it on KL with the same GDN precision. These variants answer them. They are
+**labelled as post-hoc**; the verdict rule below was not changed.
 
 | ID | Map | Question |
 |---|---|---|
@@ -95,6 +93,8 @@ They are labelled as post-hoc, and the verdict rule below was not changed.
 - **BORDERLINE:** B or C is yes, but no mixed map escapes V0's dominance.
 - **FAIL:** neither B nor C, or the toolchain cannot express module-level maps.
 
-Raw artifacts land in `artifacts/feasibility/<id>/`. `bittrellis report` writes
-`results/feasibility/` (frontier.json, comparison.csv, plots). The narrative answers are in
-[`results/feasibility/feasibility_report.md`](../results/feasibility/feasibility_report.md).
+## Outputs
+
+- Raw artifacts: `artifacts/feasibility/<id>/`.
+- `bittrellis report` writes `results/feasibility/` (frontier.json, comparison.csv, plots).
+- Narrative answers: [`results/feasibility/feasibility_report.md`](../results/feasibility/feasibility_report.md).

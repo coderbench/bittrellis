@@ -1,31 +1,30 @@
 # HPC-01 feasibility report (epoch hpc01-e2)
 
 > **Verdict: PASS.** Automated precision and quantizer search is justified.
->
-> Measured on one RTX 5090 with SparkInfer `b1ed168`, 2026-09-17, under evaluator epoch
-> `hpc01-e2`. Every number below is reproducible from [`artifacts/`](artifacts/) and
-> [`experiments/feasibility/`](../../experiments/feasibility/). This replaces the e1 pass in
-> [`../feasibility-e1/`](../feasibility-e1/), whose STRONG PASS headline did not survive the stricter
-> e2 measurement (see [What changed from e1](#what-changed-from-e1)).
 
-## The short version
+Measured on one RTX 5090 with SparkInfer `b1ed168`, 2026-09-17, evaluator epoch `hpc01-e2`. Every
+number is reproducible from [`artifacts/`](artifacts/) and
+[`experiments/feasibility/`](../../experiments/feasibility/). Replaces the e1 pass in
+[`../feasibility-e1/`](../feasibility-e1/), whose STRONG PASS did not survive the stricter e2
+measurement ([what changed](#what-changed-from-e1)). Terms: [README](../../README.md#key-terms).
 
-- **Nothing we tried beats today's checkpoint (V0) on every axis at once, and V0 beats none of them.**
-  All eight mixed seeds are valid and trade something. The search space is open.
-- **The best trade-off is V13.** It keeps V0's precision map and swaps in calibrated NVFP4 bytes for
-  56 MLP layers. It is **11.5% closer to the original model** (paired 95% CI excludes 0), with the
-  same decode speed (−0.5%) and the same peak memory, but it **reads 4K prompts 4.4% slower**.
-  Under the pre-registered rule that prefill cost makes it a PASS, not a STRONG PASS.
-- **Which parts get which format matters for real hardware.** At the same model, map choices move
-  prefill by up to −49%, peak memory by −1.8 to +1.9 GiB and decode by up to −13%.
+## In short
+
+- **Nothing beats today's checkpoint (V0) on every axis at once, and V0 beats none of them.** All
+  eight mixed seeds are valid and trade something. The search space is open.
+- **Best trade-off: V13.** V0's precision map with calibrated NVFP4 bytes for 56 MLP layers. It is
+  **11.5% closer to the original model** (paired 95% CI excludes 0) at the same decode speed (−0.5%)
+  and peak memory, but **reads 4K prompts 4.4% slower**. Under the pre-registered rule, that prefill
+  cost makes it PASS, not STRONG PASS.
+- **Maps matter on real hardware.** Same model, different maps: prefill up to −49%, peak memory
+  −1.8 to +1.9 GiB, decode up to −13%.
 - **Different layers protect different abilities.**
   - Calibrated MLP bytes (V13) halve math drift (0.175 → 0.084) and leave long context alone.
   - GDN FP8 (V3) cuts long-context drift by 62% (0.095 → 0.036) but costs 13% decode.
-- **Effects do not add up.** The GDN Q4_K × MLP Q4_K interaction is −0.0135 nats,
-  95% CI [−0.0264, −0.0023].
-- **There is a lot of room left.** The external references sit far below every internal candidate on
-  drift: unsloth's own checkpoint is 35% closer than V0, and llama.cpp with a dynamic GGUF is 53%
-  closer, but both are slower. Closing that gap on SparkInfer is the miner's job.
+- **Effects do not add up.** GDN Q4_K × MLP Q4_K interaction: −0.0135 nats, 95% CI [−0.0264, −0.0023].
+- **Lots of room left.** External references drift far less than any internal candidate: unsloth's
+  checkpoint is 35% closer than V0, llama.cpp with a dynamic GGUF 53% closer, but both are slower.
+  Closing that gap on SparkInfer is the miner's job.
 
 ## Setup
 
@@ -39,15 +38,15 @@
 | Memory | peak device memory polled over the whole benchmark process |
 | Tasks | SparkInfer `bench/quality` benchmark tier (196 items) through `sparkinfer_server` |
 
-Protocol, variants and the verdict rule were fixed before running:
-[feasibility_protocol.md](../../docs/feasibility_protocol.md). Seeds that e1 had already shown to be
-dominated or gate-failing (V2, V8, V10, V11, V12) were not re-run.
+Protocol, variants and verdict rule were fixed before running:
+[feasibility_protocol.md](../../docs/feasibility_protocol.md). Seeds e1 had shown dominated or
+gate-failing (V2, V8, V10, V11, V12) were not re-run.
 
 ## Results
 
-Δ is against V0 over identical positions (paired 95% block-bootstrap CI). ★ marks the internal
-ε-frontier over RP-KL, decode, prefill and peak memory. External references are context only and are
-never ranked.
+Δ is against V0 over identical positions (paired 95% block-bootstrap CI). ★ = internal ε-frontier
+over RP-KL, decode, prefill and peak memory (differences count only beyond noise). External
+references are context only, never ranked.
 
 | | Checkpoint | RP-KL | ΔRP-KL vs V0 [95% CI] | decode tok/s | prefill tok/s | peak GiB | tasks /196 |
 |---|---|---:|---|---:|---:|---:|---:|
@@ -64,12 +63,12 @@ never ranked.
 | ext | R2 llama.cpp + UD-Q4_K_M GGUF | 0.0638 | −53.0% [−0.0924, −0.0549] | 79.9 (−15.8%) | 3,616 (−75.5%) | 16.20 (−5.82) | — |
 
 All internal rows pass every gate: audit, runtime correctness (no non-finite log-probs), RP-KL
-≤ 0.30, top-1 ≥ 0.80, every 8K/16K/32K needle retrieved, and at most 6 task items lost against V0.
-Run-to-run spread is ≤ 0.2% on every speed figure. Plots: [`plots/`](plots/).
+≤ 0.30, top-1 ≥ 0.80, every 8K/16K/32K needle retrieved, at most 6 task items lost vs V0. Run-to-run
+spread ≤ 0.2% on every speed figure. Plots: [`plots/`](plots/).
 
 ### Drift by category
 
-RP-KL per category (lower is closer to the original). Bold marks the best internal value.
+RP-KL per category (lower = closer to the original). Bold = best internal value.
 
 | | code | general | math | multilingual | tools | long |
 |---|---:|---:|---:|---:|---:|---:|
@@ -85,13 +84,11 @@ RP-KL per category (lower is closer to the original). Bold marks the best intern
 | R1 (external) | 0.081 | 0.029 | 0.041 | 0.050 | 0.255 | 0.031 |
 | R2 (external) | 0.043 | 0.014 | 0.032 | 0.036 | 0.208 | 0.013 |
 
-What stands out:
-
-- **Math is fixed by the MLP, long context by the recurrent path.** Every map that touches GDN (V1,
-  V3, V4, V9) roughly halves long-context drift; the MLP-only maps (V6, V13) do not.
-- **Tool calling is the hardest category for everyone**, including both external references. No seed
-  moves it much, which makes it an open target.
-- **No single map wins every column.** A search that knows per-category sensitivity can combine them.
+- **Math is fixed by the MLP, long context by the recurrent path.** Every map touching GDN (V1, V3,
+  V4, V9) roughly halves long-context drift; MLP-only maps (V6, V13) do not.
+- **Tool calling is hardest for everyone**, both external references included. No seed moves it
+  much: an open target.
+- **No map wins every column.** A search aware of per-category sensitivity can combine them.
 
 ## Decision questions
 
@@ -107,15 +104,15 @@ What stands out:
 
 ### Why PASS and not STRONG PASS
 
-The rule, fixed before running, asks for a valid mixed map that either improves one objective by
-≥ 5% at statistically equivalent KL, or improves KL by ≥ 10% at ≤ 2% speed and memory cost.
+The pre-registered rule needs a valid mixed map that improves one objective by ≥ 5% at
+statistically equivalent KL, or KL by ≥ 10% at ≤ 2% speed and memory cost.
 
-- V13 improves RP-KL by 11.5% with 0.5% decode cost and no memory cost, but its prefill is 4.4%
-  slower. Prefill is a speed objective, so the 2% bound is not met.
+- V13 improves RP-KL by 11.5% at 0.5% decode cost and no memory cost, but prefill is 4.4% slower.
+  Prefill is a speed objective, so the 2% bound is not met.
 - V1, V6 and V7 save 0.6–1.8 GiB (3–8%) at statistically equivalent KL, but that is under 5% for V6
   and V7, and V1 pays 49% prefill.
 
-So the result is PASS. The margins are real but smaller than e1 suggested.
+Result: PASS. The margins are real, but smaller than e1 suggested.
 
 ## What changed from e1
 
@@ -127,19 +124,18 @@ So the result is PASS. The margins are real but smaller than e1 suggested.
 | Shipped checkpoint | R0, ranked | V0 rebuilt by the pipeline, the incumbent |
 | Headline | V13 −12.1% KL at −1.9% prefill → STRONG PASS | V13 −11.5% RP-KL at −4.4% prefill → PASS |
 
-The direction of every e1 finding held. The prefill cost of V13 grew once decode runs were longer and
-processes independent, and that moved the verdict one step.
+Every e1 finding kept its direction. V13's prefill cost grew once decode runs were longer and
+processes independent, which moved the verdict one step.
 
 ## Open questions for miners
 
-- **Where does V13's prefill cost come from?** The unsloth bytes ship in the compressed-tensors
-  layout. An in-repo calibrated quantizer that writes the ModelOpt layout would show whether the
-  cost is the layout or the values. If it is the layout, V13's quality comes for free.
+- **Where does V13's prefill cost come from?** The unsloth bytes use the compressed-tensors layout.
+  An in-repo calibrated quantizer writing the ModelOpt layout would show whether the cost is layout
+  or values. If layout, V13's quality comes for free.
 - **Can GDN FP8 be cheaper?** V3 buys the biggest long-context gain at 13% decode. Partial placements
-  (depth halves, `qkv` only) measured in e1 were cheaper but weaker; a finer search may find a better
-  point.
-- **Combine the category winners.** Calibrated MLP bytes fix math, GDN changes fix long context, and
-  they touch different tensors. Interactions are real, so measure the combination.
+  (depth halves, `qkv` only) measured in e1 were cheaper but weaker; a finer search may do better.
+- **Combine the category winners.** Calibrated MLP bytes fix math, GDN changes fix long context, on
+  different tensors. Interactions are real, so measure the combination.
 - **Tool calling.** The worst category for every checkpoint, internal and external.
 - **Close the gap to the references.** R1 and R2 prove the model can stay much closer to BF16 at
-  this size; the question is how much of that survives on SparkInfer's fast kernels.
+  this size; how much survives on SparkInfer's fast kernels?

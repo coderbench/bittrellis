@@ -1,15 +1,13 @@
 # Manifests
 
-A manifest is the whole submission: a few lines of YAML that say, for each part of the model, which
-format SparkInfer should execute and which quantizer produces its bytes. BitTrellis turns it into a
-checkpoint, audits it and measures it.
+> Per unit: the format SparkInfer runs and the quantizer writing its bytes ([terms](../README.md#key-terms)).
 
 ```yaml
 schema: bittrellis/manifest@2
 track: HPC-01
 name: gdn-fp8-deep-calibrated-mlp       # lowercase, hyphenated; becomes the artifact name
 description: >
-  Protect the deep recurrent layers with FP8 and use calibrated NVFP4 bytes for MLP 0-55.
+  FP8 for deep recurrent layers; calibrated NVFP4 bytes for MLP 0-55.
 authors: [your-github-handle]
 default: NVFP4                          # every unit starts here (NVFP4 or Q4_K)
 quantizers: {NVFP4: baseline}           # default quantizer per format (optional)
@@ -28,7 +26,7 @@ modules:                                # exact unit overrides, applied last
 
 The older `bittrellis/precision-manifest@1` schema (key `precision`) is still read.
 
-## Unit ids
+## Legal assignments
 
 ```text
 L0.gdn.qkv   L0.gdn.z   L0.gdn.out   L0.mlp            layers 0,1,2 · 4,5,6 · …  (Gated DeltaNet)
@@ -36,33 +34,26 @@ L3.attn.q    L3.attn.k  L3.attn.v    L3.attn.o   L3.mlp   layers 3,7,…,63     
 lm_head
 ```
 
-`bittrellis inventory --out module_inventory.json` lists all 273 units with their shapes, legal
-assignments, executed formats, lineage and loader constraints.
+Formats:
 
-## Legal assignments
+- `gdn.*`: NVFP4 · FP8 · Q4_K
+- `attn.*`, `mlp`: NVFP4 · Q4_K
+- `lm_head`: NVFP4 (executes Q4_K(nvfp4) at batch 1) · Q4_K
 
-| Unit kind | NVFP4 | FP8 | Q4_K |
-|---|:-:|:-:|:-:|
-| `gdn.*` | ✓ | ✓ | ✓ |
-| `attn.*` | ✓ | | ✓ |
-| `mlp` | ✓ | | ✓ |
-| `lm_head` | ✓ (executes Q4_K(nvfp4) at batch 1) | | ✓ |
+Quantizers:
 
-| Quantizer | Formats | Lineage | Notes |
-|---|---|---|---|
-| `baseline` | NVFP4 | attested | the shipped bytes (default for NVFP4) |
-| `unsloth` | NVFP4 | attested | calibrated bytes, MLP layers 0–55 only |
-| `rtn` | NVFP4, FP8 | regenerable | round-to-nearest from BF16 (default for FP8) |
-| `runtime` | Q4_K | runtime | the only Q4_K quantizer: SparkInfer fits Q4_K at load |
+- `baseline` (NVFP4, attested): shipped bytes; NVFP4 default
+- `unsloth` (NVFP4, attested): calibrated bytes, MLP layers 0–55 only
+- `rtn` (NVFP4/FP8, regenerable): round-to-nearest from BF16; FP8 default
+- `runtime` (Q4_K, runtime): the only Q4_K quantizer; SparkInfer fits it at load
 
-Anything else is rejected with a reason: FP8 outside GDN, a quantizer on a format it can't produce,
-a Q4_K "quantizer", an attested source that lacks bytes for a unit, or an unknown unit or quantizer.
-Adding quantizers: [quantizer_contract.md](quantizer_contract.md).
+Rejected: FP8 outside GDN, a quantizer on a format it can't produce, a Q4_K "quantizer", an
+attested source with no bytes for a unit, unknown units or quantizers
+([add one](quantizer_contract.md)).
 
-## Expansion and identity
+## Expansion and id
 
-A manifest *expands* to one assignment per unit. The expanded form is stored in the built checkpoint
-(`precision_manifest.yaml`) and in `candidate.json`:
+Expanded per unit into `precision_manifest.yaml` and `candidate.json`:
 
 ```yaml
 L40.gdn.z: {source_format: FP8, quantizer: rtn@v1, params: {}, execution: {decode_b1: FP8, packed_wide: FP8}}
@@ -70,16 +61,16 @@ lm_head:   {source_format: NVFP4, quantizer: baseline@v1, params: {},
             execution: {decode_b1: Q4_K(nvfp4), packed_wide: "NVFP4 if free VRAM at load > payload + 3 GiB, else Q4_K(nvfp4)"}}
 ```
 
-The **candidate id** is the first 16 hex characters of a SHA-256 over the track and every unit's
-`FORMAT@quantizer@vN[+params]`. Different rule spellings that expand identically are the same
-candidate. A quantizer version bump changes the id of every candidate that uses it.
+**Candidate id** = first 16 hex chars of SHA-256(track + every unit's `FORMAT@quantizer@vN[+params]`).
+Identical expansions share an id; a quantizer version bump changes every id using it.
 
 ## Commands
 
 ```bash
+bittrellis inventory --out module_inventory.json          # 273 units: shapes, legal/executed formats, lineage, loader constraints
 bittrellis manifest my.yaml                               # validate, per-kind summary, id
 bittrellis manifest my.yaml --expand                      # full per-unit assignment
-bittrellis manifest my.yaml --against manifests/          # flag duplicates and near-duplicates
+bittrellis manifest my.yaml --against manifests/          # flag duplicates, near-duplicates
 bittrellis build my.yaml --out models/candidates/mine     # CPU only, sources hash-verified
 bittrellis audit models/candidates/mine                   # what validators check before scoring
 bittrellis search neighbors my.yaml --out proposals/      # every legal one-group change

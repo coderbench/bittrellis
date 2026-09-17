@@ -1,76 +1,45 @@
 # The HPC-01 precision space
 
-> A precision is in the space only if the pinned runtime **executes** it. Storing bytes in a
-> format is not the same as running them.
+> Which formats can each unit use? Only what the pinned runtime **executes** counts.
 
-All line references are `runtime/src/models/qwen35.cpp` in
-[gittensor-ai-lab/sparkinfer@`b1ed168`](https://github.com/gittensor-ai-lab/sparkinfer/tree/b1ed168e3931d22d66dfa0aed3bcc2684f2b8387)
-(v0.5.8), loader `Qwen35Model::load_compressed_tensors`.
+**NVFP4** is a 4-bit float with block scales, **FP8** an 8-bit float, **Q4_K** llama.cpp's 4-bit
+k-quant fitted at load; GDN = Gated DeltaNet recurrent layers. Evidence cites loader functions in
+`runtime/src/models/qwen35.cpp` (`Qwen35Model::load_compressed_tensors`),
+[gittensor-ai-lab/sparkinfer@`b1ed168`](https://github.com/gittensor-ai-lab/sparkinfer/tree/b1ed168e3931d22d66dfa0aed3bcc2684f2b8387) (v0.5.8).
 
-## What the loader does with each stored format
+## What the loader executes
 
 ```text
-                     stored in checkpoint
-                ┌────────────┬──────────────────┬─────────────┐
- unit           │   NVFP4    │  FP8 (per row)   │    BF16     │
- ───────────────┼────────────┼──────────────────┼─────────────┤
- GDN qkv/z/out  │   NVFP4    │      FP8         │  Q4_K fit   │   keep_native()
- attention qkvo │   NVFP4    │  Q4_K fit (!)    │  Q4_K fit   │   attn_w()
- MLP block      │   NVFP4    │  Q4_K fit (!)    │  Q4_K fit   │   ffn_is_nvfp4(gate)
- lm_head        │ Q4_K fit + │  Q4_K fit        │  Q4_K fit   │   requant_q4k() always
-                │ NVFP4 copy*│                  │             │
-                └────────────┴──────────────────┴─────────────┘
-   * the NVFP4 head copy serves wide packed batches only; batch-1 decode reads the Q4_K fit
+stored ▸         NVFP4          FP8 (per row)   BF16        loader function
+GDN qkv/z/out    NVFP4          FP8             Q4_K fit    keep_native()
+attention qkvo   NVFP4          Q4_K fit (!)    Q4_K fit    attn_w()
+MLP block        NVFP4          Q4_K fit (!)    Q4_K fit    ffn_is_nvfp4(gate)
+lm_head          Q4_K fit +     Q4_K fit        Q4_K fit    requant_q4k() always
+                 NVFP4 copy*
+* wide packed batches only
 ```
 
-`Q4_K fit` is `launch_proj_requant_q4k_lloyd` run at load time on the dequantized source.
-Fitting it from BF16 is lossless in the source; fitting it from FP8 or NVFP4 quantizes twice.
+`Q4_K fit` = `launch_proj_requant_q4k_lloyd` on the dequantized source at load: one quantization when
+the stored bytes are BF16, a second one on top when they are FP8 or NVFP4.
 
-## The space BitTrellis searches
+## The searched space: 273 units, roughly `3^144 · 2^129` maps
 
-| Unit kind | Units | Legal formats | Stored as | Executed (batch-1 decode) |
-|---|---:|---|---|---|
-| `L{i}.gdn.qkv`, `.z`, `.out` | 144 (48 layers) | `NVFP4` · `FP8` · `Q4_K` | NVFP4 · FP8 per-row · BF16 | as selected |
-| `L{i}.attn.q`, `.k`, `.v`, `.o` | 64 (16 layers) | `NVFP4` · `Q4_K` | NVFP4 · BF16 | as selected |
-| `L{i}.mlp` (gate+up+down) | 64 | `NVFP4` · `Q4_K` | NVFP4 · BF16 | as selected |
-| `lm_head` | 1 | `NVFP4` · `Q4_K` | NVFP4 · BF16 | **Q4_K(nvfp4)** or Q4_K |
+- `L{i}.gdn.qkv/.z/.out`, 144 units (48 layers): NVFP4, FP8 (per-row), Q4_K (stored as BF16)
+- `L{i}.attn.q/.k/.v/.o`, 64 units (16 layers): NVFP4, Q4_K (BF16)
+- `L{i}.mlp` (gate+up+down), 64 units: NVFP4, Q4_K (BF16)
+- `lm_head`, 1 unit: NVFP4, Q4_K (BF16)
+- Full attention: layers 3, 7, 11, …, 63 (`(i + 1) % 4 == 0`); the other 48 are GDN.
+- Not searchable, BF16-only in the loader: `embed_tokens`, all norms, `linear_attn.conv1d`, `in_proj_a`, `in_proj_b`, `A_log`, `dt_bias`, vision tower.
+- Q4_K is always a runtime fit (quantizer `runtime`, no encoder choice) of frozen BF16; the head fits its stored BF16 or NVFP4 bytes (as in V0).
+- Batch-1 decode runs the selected format, except **lm_head**: always its Q4_K fit (`Q4_K(nvfp4)` or `Q4_K`). Wide packed decode also uses the NVFP4 bytes as a block-scaled GEMM operand if free VRAM at load exceeds payload plus a 3 GiB reserve. Manifests select the *stored* format; the expanded manifest records both paths, so the label never claims NVFP4 runs at batch 1.
 
-### The lm_head has conditional execution
+## Hard constraints (`bittrellis manifest`, `bittrellis audit`)
 
-The head is the one unit whose stored format is not what batch-1 decode runs:
-
-- **batch-1 decode** always executes a Q4_K fit of the stored head: `Q4_K(nvfp4)` for a stored NVFP4
-  head, `Q4_K` for a stored BF16 head;
-- **wide packed decode** additionally uses the stored NVFP4 bytes as a block-scaled GEMM operand, but
-  only when free VRAM at load exceeds the payload plus a 3 GiB reserve.
-
-Manifests select the head's *stored* format (`NVFP4` or `Q4_K`). The expanded manifest records both
-execution paths explicitly, so the label never claims NVFP4 runs at batch 1.
-
-Q4_K is always a runtime fit: its quantizer is `runtime` and no Q4_K encoder choice exists. For every
-unit except the head the fit comes from the frozen BF16 tensor; for the head it comes from its stored
-representation (BF16, or the shipped NVFP4 bytes as in V0).
-
-**273 units**, roughly `3^144 · 2^129` maps. Full-attention layers are 3, 7, 11, …, 63
-(`(i + 1) % 4 == 0`); the other 48 are Gated DeltaNet.
-
-Not searchable, BF16-only in the loader: `embed_tokens`, all norms, `linear_attn.conv1d`,
-`in_proj_a`, `in_proj_b`, `A_log`, `dt_bias`, and the vision tower.
-
-### Hard constraints enforced by `bittrellis manifest` and `bittrellis audit`
-
-- **FP8 is GDN-only.** FP8 attention/MLP/head weights load, but run as a Q4_K refit. The
-  manifest rejects them rather than letting the label lie.
-- **FP8 scales must be one BF16 value per output row.** Per-tensor or block FP8 fails the load.
-  This is why NVIDIA's official Qwen3.8-27B-NVFP4 (per-tensor FP8 attention/GDN) cannot run.
-- **MLP gate/up/down move together.** If `gate_proj` is NVFP4, `up_proj` and `down_proj` must be
-  too or the load fails.
-- **NVFP4 is group-16 with a UE4M3 block scale and one F32 tensor scale.** ModelOpt layout
-  (`.weight`, `.weight_scale`, `.weight_scale_2`) and compressed-tensors layout
-  (`.weight_packed`, `.weight_global_scale`) are both read; BitTrellis writes ModelOpt.
-- **Runtime knobs are pinned.** `SPARKINFER_Q38_*` variables can move GDN/attention/FFN between
-  NVFP4 and Q4_K without touching the checkpoint. They are part of the runtime, so BitTrellis
-  clears every `SPARKINFER_*` variable before a run.
+- **FP8 is GDN-only:** FP8 attention/MLP/head weights load but run as a Q4_K refit, so the manifest rejects them.
+- **FP8 needs one BF16 scale per output row:** per-tensor or block FP8 fails the load, which blocks NVIDIA's official Qwen3.8-27B-NVFP4 (per-tensor FP8 attention/GDN).
+- **MLP gate/up/down move together:** if `gate_proj` is NVFP4, `up_proj` and `down_proj` must be too, or the load fails.
+- **NVFP4 is group-16, UE4M3 block scale, one F32 tensor scale:** ModelOpt (`.weight`, `.weight_scale`, `.weight_scale_2`) and compressed-tensors (`.weight_packed`, `.weight_global_scale`) layouts load; BitTrellis writes ModelOpt.
+- **Runtime knobs are pinned:** `SPARKINFER_Q38_*` can move GDN/attention/FFN between NVFP4 and Q4_K without checkpoint changes; every `SPARKINFER_*` variable is cleared before a run.
 
 ## What the formats cost
 
@@ -80,12 +49,11 @@ Not searchable, BF16-only in the loader: `embed_tokens`, all norms, `linear_attn
 | FP8 | 8.0 + 16/row | `launch_gemv_fp8` | FP8 path |
 | Q4_K | 4.5 | dp4a int8 MMVQ (heavily tuned) | Q4_K-in-GEMM row scales |
 
-NVFP4 and Q4_K cost the **same bits**, so at this commit the useful trade-offs are not "fewer
-bits". They are *which 4-bit format* (different error, different kernels), *where to spend 8
-bits* (GDN only), and *how many times a weight is quantized*. The feasibility experiment measures
-whether those choices move the real frontier. It does not assume they do.
+Equal bits for NVFP4 and Q4_K: at this commit the trade-off is not "fewer bits" but *which 4-bit
+format* (error, kernels), *where to spend 8 bits* (GDN only), *how often a weight is quantized*. The
+feasibility experiment measures, not assumes, whether these move the real frontier.
 
-## Stored format in the three published Qwen3.8 NVFP4 builds
+## Published Qwen3.8 NVFP4 builds
 
 `bittrellis describe <dir>` prints this for any checkpoint:
 
@@ -95,5 +63,5 @@ whether those choices move the real frontier. It does not assume they do.
 | unsloth (R1) | FP8 | **Q4_K(fp8)** | NVFP4 ×56, **Q4_K(fp8)** ×8 | Q4_K(fp8) | yes |
 | NVIDIA (R3) | per-tensor FP8 | per-tensor FP8 | NVFP4 | NVFP4 | **no** |
 
-unsloth's FP8 attention and last eight MLPs look like "protected 8-bit" layers on disk, but at
-this commit they run as 4-bit refits of 8-bit bytes.
+unsloth's FP8 attention and last eight MLPs look "protected 8-bit" on disk but at this commit
+run as 4-bit refits of 8-bit bytes.

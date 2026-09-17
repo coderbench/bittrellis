@@ -1,30 +1,23 @@
 # Contributing to BitTrellis
 
-Thanks for helping find the quantization topology the hardware actually wants.
+> PR kinds and rules. New? Read the [miner guide](docs/miner_guide.md) and [specification](docs/specification.md).
 
-## Kinds of contributions
-
-| Kind | Where | How it is evaluated |
+| Kind | Where | Evaluated |
 |---|---|---|
-| **Manifest** (topology and quantizer placement) | `manifests/<name>.yaml` | automatically, with trusted `main` code; FG-2 |
-| **Quantizer** (better bytes for an executed format) | `bittrellis/quantizers/` plus one manifest using it | after maintainer review and the `eval-approved` label; FG-2 of its manifest |
-| **Search tooling** (proposals, surrogates) | `bittrellis/search.py` | review; the manifests it finds are scored |
-| **Docs, fixes, tests** | outside evaluator paths | review |
-| **Evaluator changes** | protected paths below | maintainers only; each change bumps the evaluator epoch |
+| **Manifest** | exactly one `manifests/<name>.yaml`, nothing else | automatically, with trusted `main` code; FG-2 |
+| **Quantizer / search code** | `bittrellis/quantizers/`, `bittrellis/search.py`, `tests/` (+ at most one manifest, + `.md` files) | after review and `eval-approved`; its manifest's FG-2 (search tooling: the manifests it finds) |
+| **Docs, fixes** | outside evaluator paths | review |
+| **Evaluator** | protected paths | maintainers only; bumps evaluator epoch |
 
-Start with the [miner guide](docs/miner_guide.md) and the
-[specification](docs/specification.md).
+## Rules
 
-## Ground rules
-
-- **One PR, one candidate.** A manifest PR adds exactly one manifest.
-- **Protected evaluator paths:** `configs/`, `data/`, `bittrellis/eval/`, `bittrellis/frontier/`,
-  `bittrellis/validate.py`, `bittrellis/lineage.py`, `bittrellis/holdout.py`, `bittrellis/build.py`,
-  `bittrellis/runtime.py`, `evaluator/`, `tools/`, `scripts/`, `.github/`, `pyproject.toml`. PRs that
-  touch them are not evaluated automatically.
-- **No self-reported scores.** Everything that matters is re-measured on the reference rig.
-- **Duplicates earn nothing.** Candidate ids are content addresses.
-- **Found a way to game the evaluator?** Report it privately ([SECURITY.md](SECURITY.md)).
+- **One PR, one candidate.**
+- **Protected evaluator paths**, never evaluated automatically (`bt:touches-evaluator`): `configs/`, `data/`,
+  `bittrellis/eval/`, `bittrellis/frontier/`, `bittrellis/{validate,lineage,holdout,runtime,build,fingerprint,synthetic,manifest,precision,cli}.py`,
+  `evaluator/`, `tools/`, `.github/`, `scripts/`, `pyproject.toml`.
+- **No self-reported scores:** the reference rig re-measures.
+- **Duplicates earn nothing:** candidate ids are content addresses.
+- **Found an evaluator exploit?** Report privately ([SECURITY.md](SECURITY.md)).
 
 ## Development
 
@@ -34,9 +27,7 @@ ruff check .
 pytest -q
 ```
 
-Tests build tiny synthetic Qwen3.8-shaped checkpoints. They cover build, audit, every lineage class
-(including sequential replay and the replay cache), tamper detection, RP-KL, ε-dominance and the PR
-classifier, without weights or a GPU.
+Tests (tiny synthetic Qwen3.8-shaped checkpoints; no weights, no GPU) cover build, audit, every lineage
+class incl. sequential replay and the replay cache, tamper detection, RP-KL, ε-dominance, PR classifier.
 
-Commit messages: one line with a conventional prefix, for example `feat(quantizers): …`,
-`fix(audit): …`, `docs(miner-guide): …`, `test(manifest): …`.
+Commits: one line, conventional prefix: `feat(quantizers): …`, `fix(audit): …`, `docs(miner-guide): …`, `test(manifest): …`.

@@ -11,12 +11,12 @@
 
 ## Hypothesis
 
-What should move (RP-KL, decode, 4K prefill, peak GPU memory), and why.
+<!-- What should move (RP-KL, decode, 4K prefill, peak GPU memory), and why. -->
 
-## Evidence (optional; the evaluator re-measures everything)
+## Evidence (optional)
 
-`bittrellis compare results/feasibility/artifacts/V0-baseline-rebuild artifacts/<name>` output from
-an RTX 5090, if you ran it. Self-reported numbers are never scored.
+<!-- Never scored; the evaluator re-measures everything. If you ran it on an RTX 5090, paste:
+     bittrellis compare results/feasibility/artifacts/V0-baseline-rebuild artifacts/<name> -->
 
 ## Checklist
 
