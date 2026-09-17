@@ -170,3 +170,14 @@ def test_frontier_duplicate_near_copy_and_staged_skip(bot):
     assert (3, "tasks") in bot.stages
     assert {"bt:frontier", "bt:merge-first"} <= set(gh.labels[3]) and len(paid & set(gh.labels[3])) == 1
     assert "eval:none" not in gh.labels[3]
+
+
+def test_evaluator_root_is_created_private(bot, tmp_path):
+    ev = pr_bot.Evaluator(FakeGitHub([]), bot.args)
+    ev.save()
+    mode = lambda p: oct(Path(p).stat().st_mode & 0o777)  # noqa: E731
+    root = Path(bot.args.root)
+    assert mode(root) == "0o711" and mode(root / "prs") == "0o711"      # traversable to each PR's untrusted tree
+    assert mode(root / "accepted") == "0o700" and mode(ev.obs.dir) == "0o700"
+    assert mode(root / "state.json") == "0o600" and mode(root / "secret.txt") == "0o600"
+    assert mode(bot.args.ledger) == "0o700"

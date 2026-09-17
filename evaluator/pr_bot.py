@@ -358,14 +358,22 @@ class Evaluator:
         self.gh, self.args = gh, args
         self.root = Path(args.root)
         self.root.mkdir(parents=True, exist_ok=True)
+        # The sandbox account must reach only <root>/prs/<pr>/untrusted: traversable root, private state.
+        os.chmod(self.root, 0o711)
+        (self.root / "prs").mkdir(exist_ok=True)
+        os.chmod(self.root / "prs", 0o711)
         self.track = load_track("HPC-01")
         self.cfg = self.track["evaluation"]["screen"]
         self.epoch = self.track["evaluation"]["epoch"]
         self.obs = G.Observations(self.root)
         self.accepted = self.root / "accepted"
         self.accepted.mkdir(exist_ok=True)
+        os.chmod(self.accepted, 0o700)
+        os.chmod(self.obs.dir, 0o700)
         self.state_path = self.root / "state.json"
         self.state: dict = json.loads(self.state_path.read_text()) if self.state_path.exists() else {}
+        if self.state_path.exists():
+            os.chmod(self.state_path, 0o600)
         self.state.setdefault("_merged", {})
         secret = self.secret_path = self.root / "secret.txt"
         if not secret.exists():
@@ -375,12 +383,15 @@ class Evaluator:
         self.sandbox = None
         self.probe_seed = int(hashlib.sha256(f"{self.secret}:probe".encode()).hexdigest()[:8], 16)
         self.ledger = Ledger(Path(args.ledger), self.epoch) if args.ledger else None
+        if self.ledger:
+            os.chmod(self.ledger.root, 0o700)
         self.py = [sys.executable, "-m", "bittrellis.cli"]
         self.env_args = ["--base", args.base, "--shipped", args.shipped, "--unsloth", args.unsloth]
         self.sources = {"base": Path(args.base), "gittensor_nvfp4": Path(args.shipped), "unsloth_nvfp4": Path(args.unsloth)}
 
     def save(self) -> None:
         self.state_path.write_text(json.dumps(self.state, indent=2) + "\n")
+        os.chmod(self.state_path, 0o600)
 
     # ---- known results --------------------------------------------------------------------
 
