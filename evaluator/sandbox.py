@@ -31,7 +31,8 @@ from pathlib import Path
 
 DEFAULT_USER = "bt-sandbox"
 SCRATCH = ("/tmp", "/var/tmp", "/dev/shm")
-NET_PROBE = "import socket; socket.create_connection(('1.1.1.1', 443), timeout=3); print('reachable')"
+NET_PROBE = ("import socket\ntry:\n    socket.create_connection(('1.1.1.1', 443), timeout=3)\n    print('reachable')\n"
+             "except OSError:\n    print('blocked')")
 ENV_ALLOW = ("LANG", "LC_ALL", "TZ")
 
 
@@ -69,8 +70,9 @@ class Sandbox:
             if not self._as_user("test", "-r", str(p)):
                 out.append(f"{self.user} cannot read {p} (the build needs it)")
         probe = subprocess.run(["runuser", "-u", self.user, "--", "python3", "-c", NET_PROBE], capture_output=True, text=True, timeout=20)
-        if "reachable" in probe.stdout:
-            out.append(f"{self.user} can reach the network (block its outbound traffic: evaluator/setup_sandbox.sh)")
+        if "blocked" not in probe.stdout:  # fail closed: a probe that did not run proves nothing
+            out.append(f"{self.user} can reach the network, or the check could not run "
+                       "(block its outbound traffic: evaluator/setup_sandbox.sh)")
         return out
 
     def own(self, path: Path) -> None:
