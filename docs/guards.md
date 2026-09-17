@@ -145,6 +145,32 @@ Set it up once, as root:
 BT_EVAL_ROOT=/workspace/bt-eval BT_PRIVATE=/secure/holdout-epoch evaluator/setup_sandbox.sh
 ```
 
+## Labels
+
+The colour tells the author what happened and who acts next: green is credit, grey is nothing new,
+blue and yellow are waiting, red is a failure (darker is more serious), purple is the evaluator's own fault.
+
+| Group | Label | Meaning |
+|---|---|---|
+| Credited | ![bt:frontier](https://img.shields.io/badge/bt%3Afrontier-0e8a16?style=flat-square) | moves the internal frontier; credited |
+| Measured, partial credit | ![bt:derivative](https://img.shields.io/badge/bt%3Aderivative-fff3b0?style=flat-square) | close to an earlier PR by another author; credited only for what it adds |
+| Nothing new | ![bt:dominated](https://img.shields.io/badge/bt%3Adominated-bfc5cc?style=flat-square) | measured and valid, but another result is at least as good on every objective |
+|  | ![bt:duplicate](https://img.shields.io/badge/bt%3Aduplicate-e1e4e8?style=flat-square) | same recipe as a seed, an accepted result or an earlier PR; not measured |
+| Waiting | ![bt:queued](https://img.shields.io/badge/bt%3Aqueued-c5def5?style=flat-square) | waiting: the author's earlier PRs are ahead in the queue |
+|  | ![bt:needs-approval](https://img.shields.io/badge/bt%3Aneeds--approval-fbca04?style=flat-square) | runs contributed code; waiting for a maintainer's eval-approved |
+|  | ![bt:copy-review](https://img.shields.io/badge/bt%3Acopy--review-e99a1c?style=flat-square) | repeated near-copies of other authors' PRs; waiting for a maintainer |
+|  | ![bt:touches-evaluator](https://img.shields.io/badge/bt%3Atouches--evaluator-1d76db?style=flat-square) | changes evaluator paths; maintainer review, not evaluated |
+| Fix your submission | ![bt:invalid-manifest](https://img.shields.io/badge/bt%3Ainvalid--manifest-f4a6a6?style=flat-square) | the manifest does not validate; fix and push |
+|  | ![bt:build-fail](https://img.shields.io/badge/bt%3Abuild--fail-f4a6a6?style=flat-square) | the checkpoint or quantizer probe did not build; fix and push |
+|  | ![bt:memory](https://img.shields.io/badge/bt%3Amemory-e8590c?style=flat-square) | predicted to exceed the GPU's memory; not measured |
+| Failed | ![bt:gate-fail](https://img.shields.io/badge/bt%3Agate--fail-d73a4a?style=flat-square) | failed a quality, task, runtime or holdout gate |
+|  | ![bt:nondeterministic](https://img.shields.io/badge/bt%3Anondeterministic-d73a4a?style=flat-square) | the new quantizer produced different bytes on identical runs |
+| Integrity | ![bt:audit-fail](https://img.shields.io/badge/bt%3Aaudit--fail-b60205?style=flat-square) | the checkpoint is not a legal encoding of the pinned weights |
+|  | ![bt:same-encoder](https://img.shields.io/badge/bt%3Asame--encoder-b60205?style=flat-square) | the new quantizer reproduces an existing encoder's bytes |
+| Evaluator's fault | ![bt:eval-error](https://img.shields.io/badge/bt%3Aeval--error-8250df?style=flat-square) | the evaluator failed, not the submission; retried automatically |
+| Maintainer actions | ![eval-approved](https://img.shields.io/badge/eval--approved-0e8a16?style=flat-square) | maintainer: evaluate this PR's contributed code in the sandbox |
+|  | ![copy-cleared](https://img.shields.io/badge/copy--cleared-0e8a16?style=flat-square) | maintainer: measure this PR despite repeated near-copies |
+
 ## Maintainer controls
 
 | Label | Effect |

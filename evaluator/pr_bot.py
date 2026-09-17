@@ -67,24 +67,33 @@ EVALUATOR_GLOBS = ("configs/*", "data/*", "bittrellis/eval/*", "bittrellis/front
                    "bittrellis/lineage.py", "bittrellis/holdout.py", "bittrellis/runtime.py", "bittrellis/build.py",
                    "bittrellis/fingerprint.py", "bittrellis/synthetic.py", "bittrellis/manifest.py", "bittrellis/precision.py",
                    "bittrellis/cli.py", "evaluator/*", "tools/*", ".github/*", "scripts/*", "pyproject.toml")
+# Colours carry the meaning, so a label reads at a glance:
+#   green       credited              pale yellow  measured, partial credit     grey   measured or seen, nothing new
+#   pale blue   waiting in line       yellow/amber waiting for a maintainer     blue   maintainer review of evaluator changes
+#   light red   fix your submission   red          failed a measured gate       dark red  integrity: audit or copied encoder
+#   orange      would not fit the GPU purple       the evaluator's own fault (retried)
 LABELS = {
-    "frontier": ("bt:frontier", "0e8a16", "moves the internal frontier"),
-    "dominated": ("bt:dominated", "cccccc", "valid but dominated"),
-    "gate": ("bt:gate-fail", "d93f0b", "failed a quality or runtime gate"),
-    "audit": ("bt:audit-fail", "b60205", "failed the checkpoint audit"),
-    "build": ("bt:build-fail", "b60205", "the checkpoint did not build"),
-    "invalid": ("bt:invalid-manifest", "b60205", "manifest does not validate"),
-    "duplicate": ("bt:duplicate", "cccccc", "same candidate as an accepted or earlier one; not measured"),
-    "copy-review": ("bt:copy-review", "fbca04", "repeated near-copies of other authors' PRs; waiting for a maintainer"),
-    "same-encoder": ("bt:same-encoder", "b60205", "the new quantizer reproduces an existing encoder"),
-    "nondeterministic": ("bt:nondeterministic", "b60205", "the new quantizer is not deterministic"),
-    "memory": ("bt:memory", "d93f0b", "predicted to exceed the GPU's memory; not measured"),
-    "queued": ("bt:queued", "ededed", "waiting: the author's earlier PRs are ahead in the queue"),
-    "evaluator": ("bt:touches-evaluator", "5319e7", "changes evaluator paths; maintainer review"),
-    "needs_approval": ("bt:needs-approval", "fbca04", "executes contributed code; waiting for eval-approved"),
-    "error": ("bt:eval-error", "b60205", "evaluation crashed; retried automatically"),
+    "frontier": ("bt:frontier", "0e8a16", "moves the internal frontier; credited"),
+    "dominated": ("bt:dominated", "bfc5cc", "measured and valid, but another result is at least as good on every objective"),
+    "duplicate": ("bt:duplicate", "e1e4e8", "same recipe as a seed, an accepted result or an earlier PR; not measured"),
+    "queued": ("bt:queued", "c5def5", "waiting: the author's earlier PRs are ahead in the queue"),
+    "needs_approval": ("bt:needs-approval", "fbca04", "runs contributed code; waiting for a maintainer's eval-approved"),
+    "copy-review": ("bt:copy-review", "e99a1c", "repeated near-copies of other authors' PRs; waiting for a maintainer"),
+    "evaluator": ("bt:touches-evaluator", "1d76db", "changes evaluator paths; maintainer review, not evaluated"),
+    "invalid": ("bt:invalid-manifest", "f4a6a6", "the manifest does not validate; fix and push"),
+    "build": ("bt:build-fail", "f4a6a6", "the checkpoint or quantizer probe did not build; fix and push"),
+    "memory": ("bt:memory", "e8590c", "predicted to exceed the GPU's memory; not measured"),
+    "gate": ("bt:gate-fail", "d73a4a", "failed a quality, task, runtime or holdout gate"),
+    "nondeterministic": ("bt:nondeterministic", "d73a4a", "the new quantizer produced different bytes on identical runs"),
+    "audit": ("bt:audit-fail", "b60205", "the checkpoint is not a legal encoding of the pinned weights"),
+    "same-encoder": ("bt:same-encoder", "b60205", "the new quantizer reproduces an existing encoder's bytes"),
+    "error": ("bt:eval-error", "8250df", "the evaluator failed, not the submission; retried automatically"),
 }
-EXTRA_LABELS = {"derivative": ("bt:derivative", "c5def5", "close to an earlier PR by another author; credited for what it adds")}
+EXTRA_LABELS = {
+    "derivative": ("bt:derivative", "fff3b0", "close to an earlier PR by another author; credited only for what it adds"),
+    "approved": ("eval-approved", "0e8a16", "maintainer: evaluate this PR's contributed code in the sandbox"),
+    "copy-cleared": ("copy-cleared", "0e8a16", "maintainer: measure this PR despite repeated near-copies"),
+}
 APPROVED, COPY_CLEARED = "eval-approved", "copy-cleared"
 RESCREEN = {"queued", "needs-approval", "copy-review", "unsafe-host"}   # re-checked every pass
 RANKED = {"frontier", "dominated", "gate"}
@@ -115,10 +124,12 @@ class GitHub:
             page += 1
 
     def ensure_labels(self) -> None:
-        existing = {lab["name"] for lab in self.paged("/labels")}
+        existing = {lab["name"]: lab for lab in self.paged("/labels")}
         for name, color, desc in [*LABELS.values(), *EXTRA_LABELS.values()]:
             if name not in existing:
                 self.api("POST", "/labels", {"name": name, "color": color, "description": desc})
+            elif (existing[name]["color"].lower(), existing[name].get("description") or "") != (color, desc):
+                self.api("PATCH", f"/labels/{urllib.request.quote(name)}", {"color": color, "description": desc})
 
     def set_status_label(self, number: int, key: str) -> None:
         current = {lab["name"] for lab in self.api("GET", f"/issues/{number}")["labels"]}

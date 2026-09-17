@@ -62,3 +62,12 @@ def test_comment_names_what_dominates():
            "prefill_tps": 13700.0, "peak_gpu_gib": 22.2, "holdout": None, "gate_failures": [], "dominated_by": ["V13-mlp-unsloth-bytes"]}
     body = pr_bot.render_comment("x", "id", {"evaluator_epoch": "e", "incumbent": "V0", "internal": [row]}, None, "dominated", [])
     assert "Dominated by `V13-mlp-unsloth-bytes`" in body
+
+
+def test_label_colours_follow_meaning():
+    color = {k: v[1] for k, v in pr_bot.LABELS.items()}
+    assert color["frontier"] == pr_bot.EXTRA_LABELS["approved"][1]                      # green: go / credited
+    assert color["audit"] == color["same-encoder"]                                       # integrity failures share dark red
+    assert color["gate"] == color["nondeterministic"] and color["invalid"] == color["build"]
+    assert len({color["frontier"], color["dominated"], color["gate"], color["audit"], color["error"], color["queued"]}) == 6
+    assert all(len(c) == 6 and c == c.lower() for _, c, _ in [*pr_bot.LABELS.values(), *pr_bot.EXTRA_LABELS.values()])
