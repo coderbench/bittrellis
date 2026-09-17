@@ -1,0 +1,17 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: calibrated-mlp-deep-qkv-fp8
+description: >
+  Evaluator dry run. V13 (calibrated MLP bytes for layers 0-55) plus FP8 on the state-writing
+  qkv projection of the deepest recurrent layers. Hypothesis: V3's long-context gain is
+  concentrated in deep qkv, so a small FP8 slice keeps most of V13's speed.
+authors: [coderbench]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    layers: "0-55"
+    format: NVFP4
+    quantizer: unsloth
+  - match: "L*.gdn.qkv"
+    layers: "48-63"
+    format: FP8
