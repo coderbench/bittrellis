@@ -188,13 +188,15 @@ A candidate enters the frontier only if all of these hold:
 ## 10. Evaluation flow
 
 ```text
-manifest ─▶ validate + duplicate check ─▶ build (sources hash-verified) ─▶ audit ──fail──▶ reject
-                                                                           │
-   public RP-KL + correctness + needles ◀────────────────────────────────┘
+observe PR heads ─▶ SCREEN (no GPU): queue share · validate · duplicate · near-copy · memory · new-encoder bytes
         │
-   task guard ─▶ 2 performance runs (decode, 4K prefill, peak GPU, host RAM)
+   build (sources hash-verified) ─▶ audit ─▶ new encoder's stored bytes ──fail──▶ reject
         │
-   private holdout (PASS/FAIL) ─▶ gates ─▶ ε-frontier vs seeds + accepted ─▶ FG-2 ─▶ PR comment + label
+   public RP-KL + correctness + needles ──gate fail──▶ stop
+        │
+   2 performance runs (decode, 4K prefill, peak GPU, host RAM) ──dominated──▶ stop (tasks, holdout skipped)
+        │
+   task guard ─▶ private holdout (PASS/FAIL) ─▶ gates ─▶ ε-frontier vs seeds + accepted + earlier open PRs ─▶ FG-2
 ```
 
 [`evaluator/pr_bot.py`](../evaluator/pr_bot.py) runs this flow for pull requests:
@@ -203,6 +205,10 @@ manifest ─▶ validate + duplicate check ─▶ build (sources hash-verified) 
 - **PRs that execute contributed code** (quantizers, search) wait for a maintainer's `eval-approved`
   label.
 - **PRs that touch evaluator paths** are never evaluated automatically.
+- **Copies** are judged by the expanded recipe and by encoder output bytes, never by source text. The
+  original is the head the evaluator observed first. A later PR is ranked with earlier open PRs by
+  other authors already on the frontier, so it earns only what it adds. Details:
+  [guards.md](guards.md).
 
 ## 11. Artifacts
 

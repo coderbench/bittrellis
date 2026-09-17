@@ -106,9 +106,22 @@ paths: `configs/`, `data/`, `bittrellis/eval/`, `bittrellis/frontier/`, `bittrel
    - no task suite more than 6 items below V0;
    - private holdout PASS.
 3. **ε-frontier.** RP-KL ↓ · decode ↑ · 4K prefill ↑ · peak GPU memory ↓, with noise-aware dominance
-   against V0, the seeds and accepted results.
+   against V0, the seeds, accepted results and earlier open PRs by other authors.
 4. **FG-2.** The normalized hypervolume your result adds. Dominated, invalid or duplicate results
    earn 0; see [frontier.md](frontier.md).
+
+Before any GPU time, the PR is screened ([guards.md](guards.md)):
+
+- **Identical recipe** to a seed, an accepted result or an earlier PR → not measured.
+- **Within 2% of the weights** of an earlier PR by another author → measured, but ranked with that PR
+  on the frontier, so it earns only what it adds. Three in one epoch wait for a maintainer.
+- **Predicted to exceed GPU memory** → not measured.
+- **A new quantizer that reproduces an existing encoder's bytes** → not measured, however the code is
+  written.
+- **More than 3 of your PRs waiting** → later ones wait their turn.
+
+The GPU stages stop early: a quality-gate failure skips the speed runs, and a result that is already
+dominated after the speed runs skips tasks and the holdout.
 
 ## What earns nothing
 
@@ -117,5 +130,6 @@ paths: `configs/`, `data/`, `bittrellis/eval/`, `bittrellis/frontier/`, `bittrel
 - changing frozen weights;
 - `SPARKINFER_*` tricks (they are cleared);
 - fitting the public corpus (the holdout catches it);
+- copying another PR, including with rewritten rules or a renamed encoder;
 - disk-size savings with no runtime effect;
 - resubmitting a seed or an accepted candidate.

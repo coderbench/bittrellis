@@ -16,7 +16,9 @@ contributions.
 | Runtime knobs faking a better checkpoint | every `SPARKINFER_*` variable cleared; only the track's pinned env applied and recorded |
 | Overfitting the public corpus | private rotating holdout, PASS/FAIL only |
 | Measurement noise producing fake wins | two-run spreads with floors, paired bootstrap on RP-KL, ε-dominance |
-| Resubmitting known results | content-addressed candidate ids; duplicates of seeds or accepted results earn nothing |
+| Resubmitting known results | content-addressed candidate ids over the expanded recipe; duplicates of seeds, accepted results or earlier PRs are not measured |
+| Copying another miner's open PR | first-seen record per head commit; near-copies are ranked with the original on the frontier and earn only what they add ([guards](docs/guards.md)) |
+| Renaming an existing encoder | quantizers are compared by output bytes on seeded probes and on the real checkpoint, not by source text |
 | Malicious code in PRs | manifest-only PRs run trusted `main` code; code PRs require a maintainer `eval-approved` label; evaluator paths are never auto-evaluated |
 
 ## Evaluator host hygiene

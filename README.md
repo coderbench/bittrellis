@@ -254,12 +254,12 @@ You don't rewrite the inference engine. You submit a better artifact for it.
 
 1. Read what the seeds measured: [feasibility report](results/feasibility/feasibility_report.md).
 2. Write `manifests/<name>.yaml`, or a new quantizer plus the manifest that uses it.
-3. Open a PR. The [evaluator bot](evaluator/pr_bot.py) builds, audits, scores, benchmarks and holdout-checks it on the pinned RTX 5090, then comments with a paired comparison against V0 and your FG-2.
-4. Only results that pass every gate and open new frontier space earn gain; duplicates earn nothing.
+3. Open a PR. The [evaluator bot](evaluator/pr_bot.py) screens it without the GPU, then builds, audits, scores, benchmarks and holdout-checks it on the pinned RTX 5090, and comments with a paired comparison against V0 and your FG-2.
+4. Only results that pass every gate and open new frontier space earn gain. Duplicates earn nothing, and a near-copy of an earlier PR earns only what it adds ([guards](docs/guards.md)).
 
 [Miner guide](docs/miner_guide.md) · [Manifests](docs/precision_manifest.md) ·
 [Quantizer contract](docs/quantizer_contract.md) · [Evaluation](docs/evaluation.md) ·
-[Frontier](docs/frontier.md) · [Search](docs/search.md) · [Holdout](docs/holdout.md)
+[Frontier](docs/frontier.md) · [Search](docs/search.md) · [Holdout](docs/holdout.md) · [Guards](docs/guards.md)
 
 ---
 

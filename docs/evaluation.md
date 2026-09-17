@@ -4,11 +4,19 @@ Every candidate goes through the same steps on the same pinned RTX 5090. The rul
 [specification](specification.md); this page is the practical view.
 
 ```text
-manifest ─▶ validate + duplicates ─▶ build ─▶ audit ─▶ public RP-KL ─▶ task guard ─▶ 2 perf runs
-                                     (hash-verified)   + correctness                     │
-                                                      + needles                          ▼
-                                    PR comment ◀─ FG-2 ◀─ ε-frontier ◀─ gates ◀─ private holdout
+screen (no GPU) ─▶ build ─▶ audit ─▶ public RP-KL ──gate fail──▶ stop
+                                     + correctness
+                                     + needles
+                                          │
+                      2 perf runs ──dominated──▶ stop: tasks and holdout cannot lift it
+                                          │
+                      task guard ─▶ private holdout ─▶ gates ─▶ ε-frontier ─▶ FG-2 ─▶ PR comment
 ```
+
+Pull requests are screened first: duplicates, near-copies, memory, queue share and new encoders are
+decided on the CPU in seconds ([guards.md](guards.md)). Measured on the pinned RTX 5090, quality takes
+about 4.5 minutes, the two speed runs about 1 minute and the task guard about 4 minutes, so a dominated
+result costs about 6 GPU minutes rather than 15.
 
 ## 1. Build and audit (CPU)
 
