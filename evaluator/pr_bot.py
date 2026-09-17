@@ -307,6 +307,7 @@ class Evaluator:
         for pr in open_prs:  # observe everything before evaluating anything
             o = self.obs.observe(pr["number"], pr["user"]["login"], pr["head"]["sha"])
             first_seen[(pr["number"], pr["head"]["sha"])] = o["first_seen"]
+        self.rerank(open_prs)  # first, so a PR lifted by a closed reference resumes in this pass
         for pr in queue_order(open_prs, first_seen):
             key = f"{pr['number']}-{pr['head']['sha'][:12]}"
             entry = self.state.get(key, {})
