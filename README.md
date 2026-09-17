@@ -8,6 +8,7 @@
   <img src="https://img.shields.io/badge/GPU-RTX%205090-76b900" alt="RTX 5090"/>
   <img src="https://img.shields.io/badge/runtime-SparkInfer%200.5.8-a855f7" alt="SparkInfer 0.5.8"/>
   <img src="https://img.shields.io/badge/rewards-Gittensor%20SN74-0e8a16" alt="Gittensor SN74"/>
+  <a href="https://github.com/coderbench/bittrellis-ledger"><img src="https://img.shields.io/badge/score%20records-published-1d76db" alt="score records"/></a>
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT"/>
 </p>
 
@@ -296,6 +297,7 @@ time (`today: Qwen3.8-27B × SparkInfer × RTX 5090`; each next model or GPU is 
 | write an encoder | [Quantizer contract](docs/quantizer_contract.md) · [Precision space](docs/precision_space.md) |
 | know how you are scored | [Evaluation](docs/evaluation.md) · [Frontier](docs/frontier.md) · [Rewards](docs/rewards.md) |
 | know what is rejected | [Guards](docs/guards.md) · [Audit](docs/audit.md) · [Holdout](docs/holdout.md) · [Security](SECURITY.md) |
+| check the published scores | [Score records](https://github.com/coderbench/bittrellis-ledger) · [Rewards](docs/rewards.md#the-public-record) |
 | read the rules and evidence | [Specification](docs/specification.md) · [Architecture](docs/architecture.md) · [Feasibility report](results/feasibility/feasibility_report.md) |
 
 MIT license · [Contributing](CONTRIBUTING.md)

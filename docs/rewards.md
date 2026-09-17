@@ -54,14 +54,15 @@ The bot never closes PRs (closing costs credibility); authors close dominated or
 
 ## The public record
 
-After every pass the evaluator writes and pushes a score record to a repository of its own
+After every pass the evaluator writes and pushes a score record to [its own repository](https://github.com/coderbench/bittrellis-ledger)
 ([`evaluator/ledger.py`](../evaluator/ledger.py), [`publish_ledger.py`](../evaluator/publish_ledger.py)):
 one write-once record per evaluated PR head (status, tier, FG-2, measured row, screen result), the
 first-seen records, the current frontier, and the artifacts of merged results. The GPU box is rented;
 the record outlives it. Re-derive any score yourself:
 
 ```bash
-bittrellis frontier <ledger>/<epoch>/accepted <your artifact>
+git clone https://github.com/coderbench/bittrellis-ledger && cd bittrellis-ledger
+bittrellis frontier hpc01-e3/accepted <your artifact>
 ```
 
 The private holdout never appears there: records carry PASS or FAIL only.
