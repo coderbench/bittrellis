@@ -77,9 +77,29 @@ def test_every_comment_leads_with_the_score():
     row = {"name": "x", "valid": True, "frontier": True, "frontier_gain": 0.00435, "rp_kl": 0.12, "decode_tps": 94.0,
            "prefill_tps": 14000.0, "peak_gpu_gib": 22.0, "holdout": "PASS", "gate_failures": []}
     body = pr_bot.render_comment("x", "id", {"evaluator_epoch": "e", "incumbent": "V0", "internal": [row]}, None, "frontier", [])
-    assert body.splitlines()[2] == "**Score: +0.435% FG-2** · credited"
-    assert pr_bot.score_header("dominated", {**row, "frontier_gain": 0.0}) == "**Score: 0** · not credited, dominated"
-    assert pr_bot.score_header("duplicate").startswith("**Score: 0**")
+    assert body.splitlines()[2] == "**Score: `eval:L` · ×2.5 on Gittensor when merged** · FG-2 +0.435%"
+    assert pr_bot.score_header("dominated", {**row, "frontier_gain": 0.0}) == "**Score: `eval:none` · ×0** · no new frontier space"
+    assert pr_bot.score_header("duplicate").startswith("**Score: `eval:none` · ×0**")
+    assert pr_bot.score_header("audit").startswith("**Score: `eval:REJECT` · ×0**")
     assert pr_bot.score_header("queued") == "**Score: pending** · not evaluated yet"
     for key in pr_bot.LABELS:
         assert pr_bot.score_header(key, row).startswith("**Score:")
+
+
+def test_tiers_are_calibrated_to_the_seed_gains():
+    t = pr_bot.REWARDS["tiers_fg2"]
+    seeds = {"V0": 0.00664, "V13": 0.00435, "V1": 0.00126, "V4": 0.00102, "V6": 0.00047}
+    assert {k: pr_bot.tier_for("frontier", g, t) for k, g in seeds.items()} == {"V0": "XL", "V13": "L", "V1": "S", "V4": "S", "V6": "XS"}
+    assert pr_bot.tier_for("frontier", 0.0, t) == "none"
+    assert pr_bot.tier_for("dominated", 0.004, t) == "none"
+    assert pr_bot.tier_for("gate", None, t) == pr_bot.tier_for("same-encoder", None, t) == "REJECT"
+    assert pr_bot.tier_for("queued", None, t) is None and pr_bot.tier_for("needs_approval", None, t) is None
+    assert set(pr_bot.REWARDS["proposed_multipliers"]) == {*pr_bot.TIERS, "none", "REJECT"}
+
+
+def test_merge_first_prefers_tier_then_gain_then_first_seen():
+    c = [{"pr": 1, "tier": "M", "gain": 0.002, "first_seen": "t1"}, {"pr": 2, "tier": "L", "gain": 0.003, "first_seen": "t3"},
+         {"pr": 3, "tier": "L", "gain": 0.004, "first_seen": "t4"}, {"pr": 4, "tier": "L", "gain": 0.004, "first_seen": "t2"},
+         {"pr": 5, "tier": "none", "gain": 0.0, "first_seen": "t0"}]
+    assert pr_bot.pick_merge_first(c)["pr"] == 4
+    assert pr_bot.pick_merge_first([c[-1]]) is None

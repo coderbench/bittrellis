@@ -89,7 +89,14 @@ LABELS = {
     "same-encoder": ("bt:same-encoder", "b60205", "the new quantizer reproduces an existing encoder's bytes"),
     "error": ("bt:eval-error", "8250df", "the evaluator failed, not the submission; retried automatically"),
 }
+TIERS = ("XL", "L", "M", "S", "XS")
+TIER_COLORS = {"XL": "0e8a16", "L": "2da44e", "M": "4ac26b", "S": "8ddb8c", "XS": "c6efce", "none": "bfc5cc", "REJECT": "b60205"}
+TIER_TEXT = {"XL": "very large frontier gain", "L": "large frontier gain", "M": "medium frontier gain",
+             "S": "small frontier gain", "XS": "minimum credited frontier gain",
+             "none": "evaluated, no new frontier space", "REJECT": "failed a gate, the audit or a screen"}
+REJECTED = {"gate", "audit", "same-encoder", "nondeterministic", "invalid", "build", "memory"}
 EXTRA_LABELS = {
+    "merge-first": ("bt:merge-first", "2da44e", "the highest-scoring open result; maintainers merge this one first"),
     "derivative": ("bt:derivative", "fff3b0", "close to an earlier PR by another author; credited only for what it adds"),
     "approved": ("eval-approved", "0e8a16", "maintainer: evaluate this PR's contributed code in the sandbox"),
     "copy-cleared": ("copy-cleared", "0e8a16", "maintainer: measure this PR despite repeated near-copies"),
@@ -125,7 +132,8 @@ class GitHub:
 
     def ensure_labels(self) -> None:
         existing = {lab["name"]: lab for lab in self.paged("/labels")}
-        for name, color, desc in [*LABELS.values(), *EXTRA_LABELS.values()]:
+        tiers = [(f"{REWARDS['label_family']}:{t}", c, TIER_TEXT[t]) for t, c in TIER_COLORS.items()]
+        for name, color, desc in [*LABELS.values(), *EXTRA_LABELS.values(), *tiers]:
             if name not in existing:
                 self.api("POST", "/labels", {"name": name, "color": color, "description": desc})
             elif (existing[name]["color"].lower(), existing[name].get("description") or "") != (color, desc):
@@ -141,6 +149,26 @@ class GitHub:
                     pass
         if LABELS[key][0] not in current:
             self.api("POST", f"/issues/{number}/labels", {"labels": [LABELS[key][0]]})
+
+    def set_tier_label(self, number: int, tier: str | None) -> None:
+        """Exactly one eval:* label (or none while pending) — the label Gittensor pays."""
+        family = REWARDS["label_family"]
+        want = f"{family}:{tier}" if tier else None
+        current = {lab["name"] for lab in self.api("GET", f"/issues/{number}")["labels"]}
+        for name in current:
+            if name.startswith(f"{family}:") and name != want:
+                try:
+                    self.api("DELETE", f"/issues/{number}/labels/{urllib.request.quote(name)}")
+                except urllib.error.HTTPError:
+                    pass
+        if want and want not in current:
+            self.api("POST", f"/issues/{number}/labels", {"labels": [want]})
+
+    def remove_label(self, number: int, name: str) -> None:
+        try:
+            self.api("DELETE", f"/issues/{number}/labels/{urllib.request.quote(name)}")
+        except urllib.error.HTTPError:
+            pass
 
     def add_label(self, number: int, name: str) -> None:
         self.api("POST", f"/issues/{number}/labels", {"labels": [name]})
@@ -221,23 +249,54 @@ def status_from_row(row: dict) -> str:
 
 
 PENDING = {"queued", "needs_approval", "copy-review", "evaluator", "error"}
-NOT_MEASURED = {"duplicate", "memory", "invalid", "build", "same-encoder", "nondeterministic", "audit"}
+NOT_MEASURED = {"memory", "invalid", "build", "same-encoder", "nondeterministic", "audit"}
+def _rewards() -> dict:
+    import yaml
+
+    return yaml.safe_load((REPO_ROOT / "configs/hpc01.yaml").read_text())["rewards"]
+
+
+REWARDS = _rewards()
 FG_EXPLAINED = ("FG-2 is the share of the quality × speed × memory space (normalized to the track's box) that this "
                 "result adds on top of every earlier result. It is the PR's score.")
+
+
+def tier_for(label: str, gain: float | None, thresholds: dict) -> str | None:
+    """The eval:* tier Gittensor pays for a status: a bucket of FG-2, none, REJECT, or None while pending."""
+    if label in PENDING:
+        return None
+    if label in REJECTED:
+        return "REJECT"
+    if label != "frontier" or not gain or gain <= 0:
+        return "none"
+    return next((t for t in ("XL", "L", "M", "S") if gain >= thresholds[t]), "XS")
+
+
+def pick_merge_first(candidates: list[dict]) -> dict | None:
+    """Among open results with a paid tier: highest tier, then largest FG-2, then observed first."""
+    rank = {t: i for i, t in enumerate(TIERS)}
+    paid = [c for c in candidates if c.get("tier") in rank]
+    return min(paid, key=lambda c: (rank[c["tier"]], -(c.get("gain") or 0), c["first_seen"])) if paid else None
 
 
 def score_header(label: str, row: dict | None = None) -> str:
     """The first line of every bot comment: the PR's score and whether it is credited."""
     if label in PENDING:
         return "**Score: pending** · not evaluated yet"
+    if label == "duplicate":
+        return f"**Score: `{REWARDS['label_family']}:none` · ×0** · not measured, duplicate"
     if label in NOT_MEASURED:
-        return "**Score: 0** · not credited, not measured"
+        return f"**Score: `{REWARDS['label_family']}:REJECT` · ×0** · not measured"
     gain = 100 * ((row or {}).get("frontier_gain") or 0)
     if label == "frontier":
-        return f"**Score: +{gain:.3f}% FG-2** · credited"
+        tier = tier_for(label, gain / 100, REWARDS["tiers_fg2"])
+        mult = REWARDS["proposed_multipliers"][tier]
+        return f"**Score: `{REWARDS['label_family']}:{tier}` · ×{mult:g} on Gittensor when merged** · FG-2 +{gain:.3f}%"
     if label == "gate":
-        return "**Score: 0** · not credited, failed a gate"
-    return "**Score: 0** · not credited, dominated"
+        return f"**Score: `{REWARDS['label_family']}:REJECT` · ×0** · failed a gate"
+    if label == "duplicate":
+        return f"**Score: `{REWARDS['label_family']}:none` · ×0** · not measured, duplicate"
+    return f"**Score: `{REWARDS['label_family']}:none` · ×0** · no new frontier space"
 
 
 def render_comment(name: str, cid: str, frontier: dict | None, cmp: dict | None, label: str, notes: list[str],
@@ -365,13 +424,31 @@ class Evaluator:
                 traceback.print_exc()
             self.save()
         self.rerank(open_prs)
+        self.mark_merge_first(open_prs)
         self.save()
+
+    def _accepted_names(self) -> list[str]:
+        return sorted(p.name for p in self.accepted.iterdir()) if self.accepted.exists() else []
+
+    def mark_merge_first(self, open_prs: list[dict]) -> None:
+        """One `bt:merge-first` per pass. Maintainers merge it; the rest are re-ranked against it afterwards."""
+        entries = {pr["number"]: self.state.get(f"{pr['number']}-{pr['head']['sha'][:12]}", {}) for pr in open_prs}
+        best = pick_merge_first([{**e, "pr": n} for n, e in entries.items() if e.get("status") == "frontier" and "first_seen" in e])
+        name = EXTRA_LABELS["merge-first"][0]
+        for pr in open_prs:
+            has = name in {lab["name"] for lab in pr["labels"]}
+            if best and pr["number"] == best["pr"]:
+                if not has:
+                    self.gh.add_label(pr["number"], name)
+            elif has:
+                self.gh.remove_label(pr["number"], name)
 
     def sync_merged(self) -> None:
         """Copy artifacts of merged, frontier-moving PRs into accepted/ so later PRs are ranked against them."""
         for pr in self.gh.paged("/pulls?state=closed&sort=updated&direction=desc")[:100]:
             if not pr.get("merged_at"):
                 continue
+            # Merged is final: the tier on a merged PR is what Gittensor pays, so the bot never relabels it.
             self.state["_merged"][str(pr["number"])] = pr["head"]["sha"]
             entry = self.state.get(f"{pr['number']}-{pr['head']['sha'][:12]}")
             if entry and entry.get("status") == "frontier" and not (self.accepted / entry["name"]).exists():
@@ -390,9 +467,11 @@ class Evaluator:
         base_entry = {"pr": number, "head": sha, "author": author, "first_seen": me["first_seen"], "kind": kind}
 
         def finish(status: str, label: str | None = None, body: str | None = None, **extra) -> None:
-            self.state[key] = {**self.state.get(key, {}), **base_entry, "status": status, **extra}
+            tier = tier_for(label or status, extra.get("gain"), REWARDS["tiers_fg2"])
+            self.state[key] = {**self.state.get(key, {}), **base_entry, "status": status, "tier": tier, **extra}
             if label:
                 self.gh.set_status_label(number, label)
+                self.gh.set_tier_label(number, tier)
             if body:
                 if not body.startswith("### BitTrellis evaluation"):
                     body = f"{score_header(label or status)}\n\n{body}"
@@ -698,8 +777,9 @@ class Evaluator:
             notes.append("Ranked with earlier open PRs on the frontier: " + ", ".join(f"#{self.state[k]['pr']}" for k in refs) + ".")
         body = render_comment(cand["name"], cand["id"], frontier, cmp, label, notes, screen, self._timings(art))
         self._delete(ckpt)  # a skipped result that a later re-rank lifts is rebuilt (deterministic, CPU)
+        row = next((r for r in frontier["internal"] if r["id"] == cand["id"]), {})
         return finish(label, label, body, artifact=str(art), candidate=cand["id"], name=cand["name"], references=refs,
-                      skipped=skipped, screen=screen)
+                      accepted=self._accepted_names(), skipped=skipped, screen=screen, gain=row.get("frontier_gain") or 0.0)
 
     def _timings(self, art: Path) -> dict:
         p = art / "timings.json"
@@ -720,7 +800,7 @@ class Evaluator:
                 continue
             me = {"pr": e["pr"], "author": e["author"], "first_seen": e["first_seen"]}
             refs = reference_entries(me, self.state, live)
-            if refs == e.get("references", []):
+            if refs == e.get("references", []) and self._accepted_names() == e.get("accepted", []):
                 continue
             work = self.root / "prs" / key
             try:
@@ -729,18 +809,20 @@ class Evaluator:
                 traceback.print_exc()
                 continue
             label = status_from_row(row)
-            e["references"] = refs
-            if label == e["status"]:
+            e["references"], e["accepted"] = refs, self._accepted_names()
+            tier = tier_for(label, row.get("frontier_gain"), REWARDS["tiers_fg2"])
+            if label == e["status"] and tier == e.get("tier"):
                 continue
             if label == "frontier" and e.get("skipped"):
                 e["status"] = "resume"  # measured tasks and holdout never ran; the next pass rebuilds and finishes it
                 self.gh.comment(pr["number"], f"{score_header('queued')}\n\nBitTrellis evaluator: an earlier PR this result was ranked against has "
                                 "closed, so it is no longer dominated. Resuming: tasks and private holdout.")
                 continue
-            e["status"] = label
+            e["status"], e["tier"], e["gain"] = label, tier, row.get("frontier_gain") or 0.0
             self.gh.set_status_label(pr["number"], label)
+            self.gh.set_tier_label(pr["number"], tier)
             self.gh.comment(pr["number"], f"{score_header(label, row)}\n\nBitTrellis evaluator: re-ranked after the set of "
-                            f"earlier PRs changed. Status is now **{LABELS[label][0]}**.")
+                            f"earlier or merged results changed. Status is now **{LABELS[label][0]}**.")
 
 
 def main() -> int:

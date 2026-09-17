@@ -168,6 +168,8 @@ blue and yellow are waiting, red is a failure (darker is more serious), purple i
 | Integrity | ![bt:audit-fail](https://img.shields.io/badge/bt%3Aaudit--fail-b60205?style=flat-square) | the checkpoint is not a legal encoding of the pinned weights |
 |  | ![bt:same-encoder](https://img.shields.io/badge/bt%3Asame--encoder-b60205?style=flat-square) | the new quantizer reproduces an existing encoder's bytes |
 | Evaluator's fault | ![bt:eval-error](https://img.shields.io/badge/bt%3Aeval--error-8250df?style=flat-square) | the evaluator failed, not the submission; retried automatically |
+| Merge order | ![bt:merge-first](https://img.shields.io/badge/bt%3Amerge--first-2da44e?style=flat-square) | the highest-scoring open result; maintainers merge this one first |
+| Paid tier | `eval:XL` … `eval:XS`, `eval:none`, `eval:REJECT` | the label Gittensor pays, see [rewards.md](rewards.md) |
 | Maintainer actions | ![eval-approved](https://img.shields.io/badge/eval--approved-0e8a16?style=flat-square) | maintainer: evaluate this PR's contributed code in the sandbox |
 |  | ![copy-cleared](https://img.shields.io/badge/copy--cleared-0e8a16?style=flat-square) | maintainer: measure this PR despite repeated near-copies |
 

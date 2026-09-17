@@ -109,6 +109,8 @@ paths: `configs/`, `data/`, `bittrellis/eval/`, `bittrellis/frontier/`, `bittrel
    against V0, the seeds, accepted results and earlier open PRs by other authors.
 4. **FG-2.** The normalized hypervolume your result adds. Dominated, invalid or duplicate results
    earn 0; see [frontier.md](frontier.md).
+5. **Tier.** FG-2 is bucketed into `eval:XL` (≥ 0.60%) … `eval:XS`; Gittensor pays the tier when a
+   maintainer merges the PR. The highest open result is marked `bt:merge-first`. See [rewards.md](rewards.md).
 
 Before any GPU time, the PR is screened ([guards.md](guards.md)):
 
