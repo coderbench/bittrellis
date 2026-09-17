@@ -55,3 +55,10 @@ def test_status_and_comment():
     body = pr_bot.render_comment("x", "id", frontier, None, "frontier", ["note"], {"manifest": {"outcome": "pass"}},
                                  {"quality_seconds": 360.0})
     assert "bt:frontier" in body and "quality 6.0 min" in body and "Claude" not in body
+
+
+def test_comment_names_what_dominates():
+    row = {"name": "x", "valid": True, "frontier": False, "frontier_gain": 0.0, "rp_kl": 0.12, "decode_tps": 93.0,
+           "prefill_tps": 13700.0, "peak_gpu_gib": 22.2, "holdout": None, "gate_failures": [], "dominated_by": ["V13-mlp-unsloth-bytes"]}
+    body = pr_bot.render_comment("x", "id", {"evaluator_epoch": "e", "incumbent": "V0", "internal": [row]}, None, "dominated", [])
+    assert "Dominated by `V13-mlp-unsloth-bytes`" in body

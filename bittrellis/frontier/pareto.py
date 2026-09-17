@@ -51,6 +51,7 @@ class Row:
     gate_failures: list[str] = field(default_factory=list)
     frontier: bool = False
     gain: float = 0.0
+    dominated_by: list[str] = field(default_factory=list)
 
     @property
     def valid(self) -> bool:
@@ -145,7 +146,10 @@ def frontier_gain(row: Row, incumbents: list[Row], box: dict) -> float:
 
 def rank(rows: list[Row], box: dict, floors: dict, quality_cmp: QualityCmp) -> list[Row]:
     front = {id(r) for r in pareto(rows, floors, quality_cmp)}
+    pool = [r for r in rows if r.kind == "internal" and r.valid]
     for r in rows:
         r.frontier = id(r) in front
         r.gain = frontier_gain(r, [o for o in rows if o is not r], box) if r.frontier else 0.0
+        if r.kind == "internal" and r.valid and not r.frontier:
+            r.dominated_by = [o.name for o in pool if o is not r and dominates(o, r, floors, quality_cmp)]
     return rows

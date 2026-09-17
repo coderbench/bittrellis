@@ -231,6 +231,11 @@ def render_comment(name: str, cid: str, frontier: dict | None, cmp: dict | None,
                       f"prefill {100 * cmp['prefill_tps']['rel']:+.1f}%, peak GPU {cmp['peak_gpu_gib']['delta']:+.2f} GiB."]
         if row["gate_failures"]:
             lines += ["", "Gate failures:", *[f"- {g}" for g in row["gate_failures"]]]
+        if row.get("dominated_by"):
+            lines += ["", "Dominated by " + ", ".join(f"`{n}`" for n in row["dominated_by"]) + ": at least as good on every objective "
+                      "within noise, and better on one."]
+        elif row["valid"] and not (row["frontier_gain"] or 0):
+            lines += ["", "On the frontier, but it adds no new frontier space: another result covers the same trade-off within noise."]
     if notes:
         lines += ["", *[f"- {n}" for n in notes]]
     if timings:
