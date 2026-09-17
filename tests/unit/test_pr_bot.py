@@ -71,3 +71,15 @@ def test_label_colours_follow_meaning():
     assert color["gate"] == color["nondeterministic"] and color["invalid"] == color["build"]
     assert len({color["frontier"], color["dominated"], color["gate"], color["audit"], color["error"], color["queued"]}) == 6
     assert all(len(c) == 6 and c == c.lower() for _, c, _ in [*pr_bot.LABELS.values(), *pr_bot.EXTRA_LABELS.values()])
+
+
+def test_every_comment_leads_with_the_score():
+    row = {"name": "x", "valid": True, "frontier": True, "frontier_gain": 0.00435, "rp_kl": 0.12, "decode_tps": 94.0,
+           "prefill_tps": 14000.0, "peak_gpu_gib": 22.0, "holdout": "PASS", "gate_failures": []}
+    body = pr_bot.render_comment("x", "id", {"evaluator_epoch": "e", "incumbent": "V0", "internal": [row]}, None, "frontier", [])
+    assert body.splitlines()[2] == "**Score: +0.435% FG-2** · credited"
+    assert pr_bot.score_header("dominated", {**row, "frontier_gain": 0.0}) == "**Score: 0** · not credited, dominated"
+    assert pr_bot.score_header("duplicate").startswith("**Score: 0**")
+    assert pr_bot.score_header("queued") == "**Score: pending** · not evaluated yet"
+    for key in pr_bot.LABELS:
+        assert pr_bot.score_header(key, row).startswith("**Score:")

@@ -220,12 +220,32 @@ def status_from_row(row: dict) -> str:
 # ── comment ────────────────────────────────────────────────────────────────────────────────────
 
 
+PENDING = {"queued", "needs_approval", "copy-review", "evaluator", "error"}
+NOT_MEASURED = {"duplicate", "memory", "invalid", "build", "same-encoder", "nondeterministic", "audit"}
+FG_EXPLAINED = ("FG-2 is the share of the quality × speed × memory space (normalized to the track's box) that this "
+                "result adds on top of every earlier result. It is the PR's score.")
+
+
+def score_header(label: str, row: dict | None = None) -> str:
+    """The first line of every bot comment: the PR's score and whether it is credited."""
+    if label in PENDING:
+        return "**Score: pending** · not evaluated yet"
+    if label in NOT_MEASURED:
+        return "**Score: 0** · not credited, not measured"
+    gain = 100 * ((row or {}).get("frontier_gain") or 0)
+    if label == "frontier":
+        return f"**Score: +{gain:.3f}% FG-2** · credited"
+    if label == "gate":
+        return "**Score: 0** · not credited, failed a gate"
+    return "**Score: 0** · not credited, dominated"
+
+
 def render_comment(name: str, cid: str, frontier: dict | None, cmp: dict | None, label: str, notes: list[str],
                    screen: dict | None = None, timings: dict | None = None) -> str:
     epoch = frontier["evaluator_epoch"] if frontier else "—"
-    lines = [f"### BitTrellis evaluation · `{name}` · `{cid}`", "",
-             f"Epoch `{epoch}` · status **{LABELS[label][0]}**", ""]
     row = next((r for r in frontier["internal"] if r["name"] == name), None) if frontier else None
+    lines = [f"### BitTrellis evaluation · `{name}` · `{cid}`", "", score_header(label, row), "",
+             f"Epoch `{epoch}` · status **{LABELS[label][0]}**", ""]
     if row:
         lines += ["| | RP-KL ↓ | decode tok/s ↑ | prefill 4K tok/s ↑ | peak GPU GiB ↓ | holdout | FG-2 |",
                   "|---|---:|---:|---:|---:|---|---:|",
@@ -249,6 +269,8 @@ def render_comment(name: str, cid: str, frontier: dict | None, cmp: dict | None,
             lines += ["", "On the frontier, but it adds no new frontier space: another result covers the same trade-off within noise."]
     if notes:
         lines += ["", *[f"- {n}" for n in notes]]
+    if row:
+        lines += ["", f"<sub>{FG_EXPLAINED}</sub>"]
     if timings:
         lines += ["", "GPU time: " + " · ".join(f"{k.removesuffix('_seconds')} {v / 60:.1f} min" for k, v in timings.items())]
     lines += ["", f"<!-- bittrellis-result {json.dumps({'name': name, 'id': cid, 'status': LABELS[label][0], 'row': row, 'screen': screen})} -->"]
@@ -372,6 +394,8 @@ class Evaluator:
             if label:
                 self.gh.set_status_label(number, label)
             if body:
+                if not body.startswith("### BitTrellis evaluation"):
+                    body = f"{score_header(label or status)}\n\n{body}"
                 self.gh.comment(number, body)
 
         if kind in ("evaluator", "other") or not manifests:
@@ -710,13 +734,13 @@ class Evaluator:
                 continue
             if label == "frontier" and e.get("skipped"):
                 e["status"] = "resume"  # measured tasks and holdout never ran; the next pass rebuilds and finishes it
-                self.gh.comment(pr["number"], "BitTrellis evaluator: an earlier PR this result was ranked against has "
+                self.gh.comment(pr["number"], f"{score_header('queued')}\n\nBitTrellis evaluator: an earlier PR this result was ranked against has "
                                 "closed, so it is no longer dominated. Resuming: tasks and private holdout.")
                 continue
             e["status"] = label
             self.gh.set_status_label(pr["number"], label)
-            self.gh.comment(pr["number"], f"BitTrellis evaluator: re-ranked after the set of earlier PRs changed. Status is now "
-                            f"**{LABELS[label][0]}**, FG-2 {100 * (row['frontier_gain'] or 0):.3f}%.")
+            self.gh.comment(pr["number"], f"{score_header(label, row)}\n\nBitTrellis evaluator: re-ranked after the set of "
+                            f"earlier PRs changed. Status is now **{LABELS[label][0]}**.")
 
 
 def main() -> int:
