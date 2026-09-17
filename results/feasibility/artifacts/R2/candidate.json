@@ -1,0 +1,9 @@
+{
+  "id": "R2",
+  "name": "llama.cpp + unsloth UD-Q4_K_M (imatrix dynamic GGUF)",
+  "kind": "external",
+  "source": "unsloth_gguf",
+  "file": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "llama_cpp_commit": "d8df12ebc4592b55dcecf97a32953623d031efdc",
+  "checkpoint_bytes": 16464440224
+}

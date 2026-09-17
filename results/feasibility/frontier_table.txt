@@ -1,0 +1,19 @@
+INTERNAL FRONTIER (legal BitTrellis artifacts on pinned SparkInfer)
+  id                 name                               RP-KL   top1  decode  prefill peakGPU   FG-2  gates
+-----------------------------------------------------------------------------------------------------------
+  108f52cb31637e3b   V3-gdn-fp8                        0.1128  0.916    83.0    11848   23.93  0.00%  PASS
+★ fe5f0291a327017e   V13-mlp-unsloth-bytes             0.1201  0.915    94.4    14110   22.02  0.43%  PASS
+★ 761abdfe22f7be0d   V1-all-q4k                        0.1242  0.919    94.8     7537   20.25  0.13%  PASS
+  9d0cb1d5251219a5   V9-gdn-q4k-mlp-q4k                0.1277  0.913    94.0     7560   20.41  0.00%  PASS
+  e285ede4f647cdeb   V7-mlp-q4k-early                  0.1284  0.909    94.3     8199   21.40  0.00%  PASS
+★ 0357c99d6f50a880   V6-mlp-q4k                        0.1346  0.913    94.4     8358   20.84  0.05%  PASS
+★ 0093abe3f5d3de50   V5-attn-q4k                       0.1356  0.909    94.6    13571   21.85  0.03%  PASS
+★ 5d9ab7d654bd2e32   V0-baseline-rebuild               0.1357  0.911    94.9    14760   22.02  0.66%  PASS
+★ 8ee4f9b18f007a8e   V4-gdn-q4k                        0.1424  0.910    94.9    12011   21.58  0.10%  PASS
+
+EXTERNAL REFERENCES (context only; never ranked)
+  id                 name                               RP-KL   top1  decode  prefill peakGPU   FG-2  gates
+-----------------------------------------------------------------------------------------------------------
+  R2                 llama.cpp + unsloth UD-Q4_K_M (i  0.0638  0.951    79.9     3616   16.20     —  PASS
+  R1                 unsloth NVFP4 (hand-tuned mixed   0.0879  0.934    82.4    10305   23.63     —  PASS
+

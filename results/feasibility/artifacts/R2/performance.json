@@ -1,0 +1,18 @@
+{
+  "decode_tps": 79.9472585,
+  "decode_spread": 0.000805068256343026,
+  "prefill_tps": 3616.0924075000003,
+  "prefill_spread": 0.0021650345504894714,
+  "peak_gpu_gib": 16.1953125,
+  "runs": [
+    {
+      "decode_tps": 79.915077,
+      "prefill_tps": 3620.00689
+    },
+    {
+      "decode_tps": 79.97944,
+      "prefill_tps": 3612.177925
+    }
+  ],
+  "note": "llama-bench -r 1 per run (tg at depth 4096, pp 4096); peak GPU from llama-server with 16K filled"
+}

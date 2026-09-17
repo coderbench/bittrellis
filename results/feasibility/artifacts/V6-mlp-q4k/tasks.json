@@ -1,0 +1,40 @@
+{
+  "suites": {
+    "bfcl": {
+      "passed": 58,
+      "n": 75,
+      "rate": 0.7733333333333333
+    },
+    "gsm8k": {
+      "passed": 33,
+      "n": 33,
+      "rate": 1.0
+    },
+    "humaneval": {
+      "passed": 4,
+      "n": 5,
+      "rate": 0.8
+    },
+    "ifeval": {
+      "passed": 6,
+      "n": 8,
+      "rate": 0.75
+    },
+    "mmlu_pro": {
+      "passed": 44,
+      "n": 75,
+      "rate": 0.5866666666666667
+    }
+  },
+  "passed": 145,
+  "n": 196,
+  "rate": 0.7397959183673469,
+  "max_tokens": {
+    "gsm8k": 1024,
+    "humaneval": 768,
+    "mmlu_pro": 64,
+    "ifeval": 768,
+    "bfcl": 256
+  },
+  "provenance": "measured in epoch hpc01-e1 on byte-identical checkpoint shards; task runner unchanged"
+}

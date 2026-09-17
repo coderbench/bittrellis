@@ -1,0 +1,2805 @@
+{
+  "id": "fe5f0291a327017e",
+  "name": "V13-mlp-unsloth-bytes",
+  "kind": "internal",
+  "manifest": {
+    "schema": "bittrellis/manifest@2",
+    "track": "HPC-01",
+    "name": "V13-mlp-unsloth-bytes",
+    "description": "Same precision map as V0 (NVFP4 everywhere), but MLP layers 0-55 use unsloth's calibrated NVFP4 bytes (llm-compressor, actorder static) instead of the baseline's round-to-nearest ones. R1 beat V3 on KL with the same GDN precision; this isolates how much of that comes from the quantizer rather than the topology, at V0's speed and memory.\n",
+    "authors": [],
+    "default": "NVFP4",
+    "rules": [
+      {
+        "match": "L*.mlp",
+        "layers": "0-55",
+        "format": "NVFP4",
+        "quantizer": "unsloth"
+      }
+    ],
+    "modules": {},
+    "quantizers": {
+      "NVFP4": "baseline",
+      "FP8": "rtn",
+      "Q4_K": "runtime"
+    },
+    "expanded": {
+      "L0.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L0.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L0.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L0.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L1.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L1.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L1.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L1.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L2.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L2.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L2.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L2.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L3.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L3.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L3.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L3.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L3.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L4.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L4.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L4.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L4.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L5.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L5.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L5.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L5.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L6.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L6.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L6.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L6.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L7.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L7.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L7.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L7.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L7.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L8.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L8.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L8.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L8.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L9.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L9.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L9.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L9.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L10.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L10.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L10.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L10.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L11.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L11.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L11.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L11.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L11.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L12.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L12.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L12.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L12.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L13.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L13.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L13.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L13.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L14.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L14.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L14.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L14.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L15.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L15.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L15.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L15.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L15.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L16.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L16.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L16.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L16.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L17.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L17.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L17.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L17.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L18.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L18.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L18.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L18.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L19.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L19.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L19.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L19.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L19.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L20.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L20.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L20.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L20.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L21.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L21.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L21.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L21.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L22.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L22.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L22.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L22.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L23.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L23.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L23.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L23.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L23.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L24.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L24.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L24.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L24.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L25.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L25.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L25.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L25.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L26.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L26.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L26.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L26.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L27.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L27.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L27.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L27.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L27.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L28.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L28.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L28.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L28.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L29.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L29.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L29.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L29.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L30.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L30.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L30.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L30.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L31.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L31.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L31.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L31.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L31.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L32.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L32.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L32.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L32.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L33.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L33.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L33.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L33.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L34.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L34.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L34.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L34.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L35.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L35.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L35.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L35.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L35.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L36.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L36.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L36.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L36.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L37.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L37.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L37.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L37.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L38.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L38.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L38.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L38.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L39.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L39.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L39.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L39.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L39.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L40.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L40.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L40.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L40.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L41.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L41.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L41.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L41.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L42.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L42.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L42.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L42.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L43.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L43.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L43.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L43.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L43.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L44.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L44.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L44.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L44.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L45.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L45.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L45.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L45.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L46.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L46.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L46.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L46.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L47.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L47.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L47.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L47.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L47.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L48.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L48.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L48.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L48.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L49.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L49.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L49.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L49.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L50.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L50.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L50.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L50.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L51.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L51.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L51.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L51.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L51.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L52.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L52.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L52.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L52.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L53.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L53.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L53.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L53.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L54.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L54.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L54.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L54.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L55.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L55.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L55.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L55.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L55.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "unsloth@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L56.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L56.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L56.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L56.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L57.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L57.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L57.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L57.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L58.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L58.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L58.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L58.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L59.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L59.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L59.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L59.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L59.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L60.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L60.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L60.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L60.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L61.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L61.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L61.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L61.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L62.gdn.qkv": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L62.gdn.z": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L62.gdn.out": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L62.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L63.attn.q": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L63.attn.k": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L63.attn.v": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L63.attn.o": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "L63.mlp": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "NVFP4",
+          "packed_wide": "NVFP4"
+        }
+      },
+      "lm_head": {
+        "source_format": "NVFP4",
+        "quantizer": "baseline@v1",
+        "params": {},
+        "execution": {
+          "decode_b1": "Q4_K(nvfp4)",
+          "packed_wide": "NVFP4 if free VRAM at load > payload + 3 GiB, else Q4_K(nvfp4)"
+        }
+      }
+    }
+  },
+  "build": {
+    "candidate_id": "fe5f0291a327017e",
+    "name": "V13-mlp-unsloth-bytes",
+    "track": "HPC-01",
+    "bittrellis_version": "0.1.0",
+    "quantizers": {
+      "baseline@v1": {
+        "lineage": "attested",
+        "replay_mode": "none",
+        "source": "gittensor_nvfp4"
+      },
+      "unsloth@v1": {
+        "lineage": "attested",
+        "replay_mode": "none",
+        "source": "unsloth_nvfp4"
+      }
+    },
+    "sources_verified": true,
+    "summary": {
+      "gdn": {
+        "NVFP4": 144
+      },
+      "mlp": {
+        "NVFP4@unsloth": 56,
+        "NVFP4": 8
+      },
+      "attn": {
+        "NVFP4": 64
+      },
+      "lm_head": {
+        "NVFP4": 1
+      }
+    },
+    "checkpoint_bytes": 17916127448,
+    "files": {
+      "model-00001-of-00004.safetensors": "ceb047d46cef578c2fe54f97bcfb95736defad9b256aa76ba2baf695155106b2",
+      "model-00002-of-00004.safetensors": "1e2e6e3a2610b709813a0673a62e06838b21a67975708c0abc4e5398b5ea58bc",
+      "model-00003-of-00004.safetensors": "fa3d2b2f48b5b025f7888044afbbe1735244d32a7a893702157bcf8689efb59e",
+      "model-00004-of-00004.safetensors": "ef8bdae9e2514b83dc8a3716054742521d9cee0977709a7eb5c261a420b88d1c"
+    },
+    "build_seconds": 182.8
+  },
+  "audit_ok": true,
+  "executed_formats": {
+    "L0.gdn.qkv": "NVFP4",
+    "L0.gdn.z": "NVFP4",
+    "L0.gdn.out": "NVFP4",
+    "L0.mlp": "NVFP4",
+    "L1.gdn.qkv": "NVFP4",
+    "L1.gdn.z": "NVFP4",
+    "L1.gdn.out": "NVFP4",
+    "L1.mlp": "NVFP4",
+    "L2.gdn.qkv": "NVFP4",
+    "L2.gdn.z": "NVFP4",
+    "L2.gdn.out": "NVFP4",
+    "L2.mlp": "NVFP4",
+    "L3.attn.q": "NVFP4",
+    "L3.attn.k": "NVFP4",
+    "L3.attn.v": "NVFP4",
+    "L3.attn.o": "NVFP4",
+    "L3.mlp": "NVFP4",
+    "L4.gdn.qkv": "NVFP4",
+    "L4.gdn.z": "NVFP4",
+    "L4.gdn.out": "NVFP4",
+    "L4.mlp": "NVFP4",
+    "L5.gdn.qkv": "NVFP4",
+    "L5.gdn.z": "NVFP4",
+    "L5.gdn.out": "NVFP4",
+    "L5.mlp": "NVFP4",
+    "L6.gdn.qkv": "NVFP4",
+    "L6.gdn.z": "NVFP4",
+    "L6.gdn.out": "NVFP4",
+    "L6.mlp": "NVFP4",
+    "L7.attn.q": "NVFP4",
+    "L7.attn.k": "NVFP4",
+    "L7.attn.v": "NVFP4",
+    "L7.attn.o": "NVFP4",
+    "L7.mlp": "NVFP4",
+    "L8.gdn.qkv": "NVFP4",
+    "L8.gdn.z": "NVFP4",
+    "L8.gdn.out": "NVFP4",
+    "L8.mlp": "NVFP4",
+    "L9.gdn.qkv": "NVFP4",
+    "L9.gdn.z": "NVFP4",
+    "L9.gdn.out": "NVFP4",
+    "L9.mlp": "NVFP4",
+    "L10.gdn.qkv": "NVFP4",
+    "L10.gdn.z": "NVFP4",
+    "L10.gdn.out": "NVFP4",
+    "L10.mlp": "NVFP4",
+    "L11.attn.q": "NVFP4",
+    "L11.attn.k": "NVFP4",
+    "L11.attn.v": "NVFP4",
+    "L11.attn.o": "NVFP4",
+    "L11.mlp": "NVFP4",
+    "L12.gdn.qkv": "NVFP4",
+    "L12.gdn.z": "NVFP4",
+    "L12.gdn.out": "NVFP4",
+    "L12.mlp": "NVFP4",
+    "L13.gdn.qkv": "NVFP4",
+    "L13.gdn.z": "NVFP4",
+    "L13.gdn.out": "NVFP4",
+    "L13.mlp": "NVFP4",
+    "L14.gdn.qkv": "NVFP4",
+    "L14.gdn.z": "NVFP4",
+    "L14.gdn.out": "NVFP4",
+    "L14.mlp": "NVFP4",
+    "L15.attn.q": "NVFP4",
+    "L15.attn.k": "NVFP4",
+    "L15.attn.v": "NVFP4",
+    "L15.attn.o": "NVFP4",
+    "L15.mlp": "NVFP4",
+    "L16.gdn.qkv": "NVFP4",
+    "L16.gdn.z": "NVFP4",
+    "L16.gdn.out": "NVFP4",
+    "L16.mlp": "NVFP4",
+    "L17.gdn.qkv": "NVFP4",
+    "L17.gdn.z": "NVFP4",
+    "L17.gdn.out": "NVFP4",
+    "L17.mlp": "NVFP4",
+    "L18.gdn.qkv": "NVFP4",
+    "L18.gdn.z": "NVFP4",
+    "L18.gdn.out": "NVFP4",
+    "L18.mlp": "NVFP4",
+    "L19.attn.q": "NVFP4",
+    "L19.attn.k": "NVFP4",
+    "L19.attn.v": "NVFP4",
+    "L19.attn.o": "NVFP4",
+    "L19.mlp": "NVFP4",
+    "L20.gdn.qkv": "NVFP4",
+    "L20.gdn.z": "NVFP4",
+    "L20.gdn.out": "NVFP4",
+    "L20.mlp": "NVFP4",
+    "L21.gdn.qkv": "NVFP4",
+    "L21.gdn.z": "NVFP4",
+    "L21.gdn.out": "NVFP4",
+    "L21.mlp": "NVFP4",
+    "L22.gdn.qkv": "NVFP4",
+    "L22.gdn.z": "NVFP4",
+    "L22.gdn.out": "NVFP4",
+    "L22.mlp": "NVFP4",
+    "L23.attn.q": "NVFP4",
+    "L23.attn.k": "NVFP4",
+    "L23.attn.v": "NVFP4",
+    "L23.attn.o": "NVFP4",
+    "L23.mlp": "NVFP4",
+    "L24.gdn.qkv": "NVFP4",
+    "L24.gdn.z": "NVFP4",
+    "L24.gdn.out": "NVFP4",
+    "L24.mlp": "NVFP4",
+    "L25.gdn.qkv": "NVFP4",
+    "L25.gdn.z": "NVFP4",
+    "L25.gdn.out": "NVFP4",
+    "L25.mlp": "NVFP4",
+    "L26.gdn.qkv": "NVFP4",
+    "L26.gdn.z": "NVFP4",
+    "L26.gdn.out": "NVFP4",
+    "L26.mlp": "NVFP4",
+    "L27.attn.q": "NVFP4",
+    "L27.attn.k": "NVFP4",
+    "L27.attn.v": "NVFP4",
+    "L27.attn.o": "NVFP4",
+    "L27.mlp": "NVFP4",
+    "L28.gdn.qkv": "NVFP4",
+    "L28.gdn.z": "NVFP4",
+    "L28.gdn.out": "NVFP4",
+    "L28.mlp": "NVFP4",
+    "L29.gdn.qkv": "NVFP4",
+    "L29.gdn.z": "NVFP4",
+    "L29.gdn.out": "NVFP4",
+    "L29.mlp": "NVFP4",
+    "L30.gdn.qkv": "NVFP4",
+    "L30.gdn.z": "NVFP4",
+    "L30.gdn.out": "NVFP4",
+    "L30.mlp": "NVFP4",
+    "L31.attn.q": "NVFP4",
+    "L31.attn.k": "NVFP4",
+    "L31.attn.v": "NVFP4",
+    "L31.attn.o": "NVFP4",
+    "L31.mlp": "NVFP4",
+    "L32.gdn.qkv": "NVFP4",
+    "L32.gdn.z": "NVFP4",
+    "L32.gdn.out": "NVFP4",
+    "L32.mlp": "NVFP4",
+    "L33.gdn.qkv": "NVFP4",
+    "L33.gdn.z": "NVFP4",
+    "L33.gdn.out": "NVFP4",
+    "L33.mlp": "NVFP4",
+    "L34.gdn.qkv": "NVFP4",
+    "L34.gdn.z": "NVFP4",
+    "L34.gdn.out": "NVFP4",
+    "L34.mlp": "NVFP4",
+    "L35.attn.q": "NVFP4",
+    "L35.attn.k": "NVFP4",
+    "L35.attn.v": "NVFP4",
+    "L35.attn.o": "NVFP4",
+    "L35.mlp": "NVFP4",
+    "L36.gdn.qkv": "NVFP4",
+    "L36.gdn.z": "NVFP4",
+    "L36.gdn.out": "NVFP4",
+    "L36.mlp": "NVFP4",
+    "L37.gdn.qkv": "NVFP4",
+    "L37.gdn.z": "NVFP4",
+    "L37.gdn.out": "NVFP4",
+    "L37.mlp": "NVFP4",
+    "L38.gdn.qkv": "NVFP4",
+    "L38.gdn.z": "NVFP4",
+    "L38.gdn.out": "NVFP4",
+    "L38.mlp": "NVFP4",
+    "L39.attn.q": "NVFP4",
+    "L39.attn.k": "NVFP4",
+    "L39.attn.v": "NVFP4",
+    "L39.attn.o": "NVFP4",
+    "L39.mlp": "NVFP4",
+    "L40.gdn.qkv": "NVFP4",
+    "L40.gdn.z": "NVFP4",
+    "L40.gdn.out": "NVFP4",
+    "L40.mlp": "NVFP4",
+    "L41.gdn.qkv": "NVFP4",
+    "L41.gdn.z": "NVFP4",
+    "L41.gdn.out": "NVFP4",
+    "L41.mlp": "NVFP4",
+    "L42.gdn.qkv": "NVFP4",
+    "L42.gdn.z": "NVFP4",
+    "L42.gdn.out": "NVFP4",
+    "L42.mlp": "NVFP4",
+    "L43.attn.q": "NVFP4",
+    "L43.attn.k": "NVFP4",
+    "L43.attn.v": "NVFP4",
+    "L43.attn.o": "NVFP4",
+    "L43.mlp": "NVFP4",
+    "L44.gdn.qkv": "NVFP4",
+    "L44.gdn.z": "NVFP4",
+    "L44.gdn.out": "NVFP4",
+    "L44.mlp": "NVFP4",
+    "L45.gdn.qkv": "NVFP4",
+    "L45.gdn.z": "NVFP4",
+    "L45.gdn.out": "NVFP4",
+    "L45.mlp": "NVFP4",
+    "L46.gdn.qkv": "NVFP4",
+    "L46.gdn.z": "NVFP4",
+    "L46.gdn.out": "NVFP4",
+    "L46.mlp": "NVFP4",
+    "L47.attn.q": "NVFP4",
+    "L47.attn.k": "NVFP4",
+    "L47.attn.v": "NVFP4",
+    "L47.attn.o": "NVFP4",
+    "L47.mlp": "NVFP4",
+    "L48.gdn.qkv": "NVFP4",
+    "L48.gdn.z": "NVFP4",
+    "L48.gdn.out": "NVFP4",
+    "L48.mlp": "NVFP4",
+    "L49.gdn.qkv": "NVFP4",
+    "L49.gdn.z": "NVFP4",
+    "L49.gdn.out": "NVFP4",
+    "L49.mlp": "NVFP4",
+    "L50.gdn.qkv": "NVFP4",
+    "L50.gdn.z": "NVFP4",
+    "L50.gdn.out": "NVFP4",
+    "L50.mlp": "NVFP4",
+    "L51.attn.q": "NVFP4",
+    "L51.attn.k": "NVFP4",
+    "L51.attn.v": "NVFP4",
+    "L51.attn.o": "NVFP4",
+    "L51.mlp": "NVFP4",
+    "L52.gdn.qkv": "NVFP4",
+    "L52.gdn.z": "NVFP4",
+    "L52.gdn.out": "NVFP4",
+    "L52.mlp": "NVFP4",
+    "L53.gdn.qkv": "NVFP4",
+    "L53.gdn.z": "NVFP4",
+    "L53.gdn.out": "NVFP4",
+    "L53.mlp": "NVFP4",
+    "L54.gdn.qkv": "NVFP4",
+    "L54.gdn.z": "NVFP4",
+    "L54.gdn.out": "NVFP4",
+    "L54.mlp": "NVFP4",
+    "L55.attn.q": "NVFP4",
+    "L55.attn.k": "NVFP4",
+    "L55.attn.v": "NVFP4",
+    "L55.attn.o": "NVFP4",
+    "L55.mlp": "NVFP4",
+    "L56.gdn.qkv": "NVFP4",
+    "L56.gdn.z": "NVFP4",
+    "L56.gdn.out": "NVFP4",
+    "L56.mlp": "NVFP4",
+    "L57.gdn.qkv": "NVFP4",
+    "L57.gdn.z": "NVFP4",
+    "L57.gdn.out": "NVFP4",
+    "L57.mlp": "NVFP4",
+    "L58.gdn.qkv": "NVFP4",
+    "L58.gdn.z": "NVFP4",
+    "L58.gdn.out": "NVFP4",
+    "L58.mlp": "NVFP4",
+    "L59.attn.q": "NVFP4",
+    "L59.attn.k": "NVFP4",
+    "L59.attn.v": "NVFP4",
+    "L59.attn.o": "NVFP4",
+    "L59.mlp": "NVFP4",
+    "L60.gdn.qkv": "NVFP4",
+    "L60.gdn.z": "NVFP4",
+    "L60.gdn.out": "NVFP4",
+    "L60.mlp": "NVFP4",
+    "L61.gdn.qkv": "NVFP4",
+    "L61.gdn.z": "NVFP4",
+    "L61.gdn.out": "NVFP4",
+    "L61.mlp": "NVFP4",
+    "L62.gdn.qkv": "NVFP4",
+    "L62.gdn.z": "NVFP4",
+    "L62.gdn.out": "NVFP4",
+    "L62.mlp": "NVFP4",
+    "L63.attn.q": "NVFP4",
+    "L63.attn.k": "NVFP4",
+    "L63.attn.v": "NVFP4",
+    "L63.attn.o": "NVFP4",
+    "L63.mlp": "NVFP4",
+    "lm_head": "NVFP4"
+  },
+  "checkpoint_bytes": 17916127448
+}

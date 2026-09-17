@@ -1,0 +1,160 @@
+{
+  "metric": "reference-partition-kl",
+  "partition_k": 256,
+  "positions": 21624,
+  "rp_kl": 0.12771525447744334,
+  "rp_kl_ci95": [
+    0.09454169043667493,
+    0.16596778959159694
+  ],
+  "rp_kl_p99": 2.137544439586767,
+  "top1": 0.9127820939696634,
+  "nll_delta": -0.07533191841572269,
+  "outside_mass_mean": 0.007411828985586245,
+  "nonfinite_logprobs": 0,
+  "by_category": {
+    "code": {
+      "positions": 4095,
+      "rp_kl": 0.08845759511966654,
+      "top1": 0.936996336996337,
+      "nll_delta": -0.038334308689947964
+    },
+    "general": {
+      "positions": 4095,
+      "rp_kl": 0.04791410773508609,
+      "top1": 0.8813186813186813,
+      "nll_delta": 0.021602273158389942
+    },
+    "long": {
+      "positions": 1149,
+      "rp_kl": 0.041504272715796604,
+      "top1": 0.9007832898172323,
+      "nll_delta": 0.014057208984467336
+    },
+    "math": {
+      "positions": 4095,
+      "rp_kl": 0.12503021126847966,
+      "top1": 0.8932844932844933,
+      "nll_delta": -0.17236812963809695
+    },
+    "multilingual": {
+      "positions": 4095,
+      "rp_kl": 0.07161741193547333,
+      "top1": 0.938949938949939,
+      "nll_delta": -0.18151083542040866
+    },
+    "tools": {
+      "positions": 4095,
+      "rp_kl": 0.3297465478044895,
+      "top1": 0.9167277167277167,
+      "nll_delta": -0.03112993639277904
+    }
+  },
+  "by_stream": {
+    "short-general": {
+      "rp_kl": 0.04791410773508609,
+      "top1": 0.8813186813186813
+    },
+    "short-math": {
+      "rp_kl": 0.12503021126847966,
+      "top1": 0.8932844932844933
+    },
+    "short-code": {
+      "rp_kl": 0.08845759511966654,
+      "top1": 0.936996336996337
+    },
+    "short-tools": {
+      "rp_kl": 0.3297465478044895,
+      "top1": 0.9167277167277167
+    },
+    "short-multilingual": {
+      "rp_kl": 0.07161741193547333,
+      "top1": 0.938949938949939
+    },
+    "long-8k": {
+      "rp_kl": 0.03475530880881917,
+      "top1": 0.8981723237597912
+    },
+    "long-16k": {
+      "rp_kl": 0.0314060491189397,
+      "top1": 0.8955613577023499
+    },
+    "long-32k": {
+      "rp_kl": 0.05835146021963096,
+      "top1": 0.9086161879895561
+    }
+  },
+  "needles": {
+    "long-8k": {
+      "red": {
+        "depth": 0.1,
+        "candidate": true,
+        "reference": true
+      },
+      "green": {
+        "depth": 0.5,
+        "candidate": true,
+        "reference": true
+      },
+      "blue": {
+        "depth": 0.9,
+        "candidate": true,
+        "reference": true
+      }
+    },
+    "long-16k": {
+      "red": {
+        "depth": 0.1,
+        "candidate": true,
+        "reference": true
+      },
+      "green": {
+        "depth": 0.5,
+        "candidate": true,
+        "reference": true
+      },
+      "blue": {
+        "depth": 0.9,
+        "candidate": true,
+        "reference": true
+      }
+    },
+    "long-32k": {
+      "red": {
+        "depth": 0.1,
+        "candidate": true,
+        "reference": true
+      },
+      "green": {
+        "depth": 0.5,
+        "candidate": true,
+        "reference": true
+      },
+      "blue": {
+        "depth": 0.9,
+        "candidate": true,
+        "reference": true
+      }
+    }
+  },
+  "needles_by_length": {
+    "long-8k": {
+      "required": 3,
+      "retrieved": 3
+    },
+    "long-16k": {
+      "required": 3,
+      "retrieved": 3
+    },
+    "long-32k": {
+      "required": 3,
+      "retrieved": 3
+    }
+  },
+  "needle_recall": 1.0,
+  "corpus": {
+    "version": "hpc01-v2",
+    "split": "public",
+    "sha256": "d601053c4c9c5d2ec14b9788092f33308d28fe8cddc22d6b8a04fcc7a29664ba"
+  }
+}
