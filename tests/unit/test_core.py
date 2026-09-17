@@ -238,7 +238,8 @@ def test_paired_delta_cancels_common_noise():
 BOX = {"rp_kl": [0.0, 0.3], "decode_tps": [60.0, 120.0], "prefill_tps": [2000.0, 20000.0], "peak_gpu_gib": [14.0, 32.0]}
 FLOORS = {"rp_kl": 0.002, "decode_tps": 0.01, "prefill_tps": 0.03, "peak_gpu_gib": 0.1}
 GUARD = {"required_success": {"long-8k": 1.0}}
-GATES = {"rp_kl_max": 0.3, "top1_min": 0.8, "task_max_drop_items": 6, "long_context_guard": GUARD}
+GATES = {"rp_kl_max": 0.3, "top1_min": 0.8, "long_context_guard": GUARD,
+         "task_guard": {"overall_alpha": 0.05, "suite_alpha": 0.01, "min_suite_retention": 0.5}}
 NEEDLES = {"long-8k": {"required": 3, "retrieved": 3}}
 
 
@@ -295,6 +296,52 @@ def test_gates():
     assert len(fails) == 5 and frontier_gain(broken, [], BOX) == 0.0
     unaudited = _row("u", 0.1, 90, 15000, 22, audit_ok=None)
     assert any("audit" in f for f in apply_gates(unaudited, GATES, None))
-    tasks = {"suites": {"gsm8k": {"passed": 20, "n": 33}}}
-    weak = _row("t", 0.1, 90, 15000, 22, tasks={"suites": {"gsm8k": {"passed": 10, "n": 33}}})
-    assert any("task guard" in f for f in apply_gates(weak, GATES, tasks))
+    inc = _tasks({"gsm8k": [1] * 20 + [0] * 13})
+    weak = _row("t", 0.1, 90, 15000, 22, tasks=_tasks({"gsm8k": [1] * 10 + [0] * 23}))
+    assert any("task guard" in f for f in apply_gates(weak, GATES, inc))
+    legacy = _row("l", 0.1, 90, 15000, 22, tasks={"suites": {"gsm8k": {"passed": 20, "n": 33}}})
+    assert any("per-question" in f for f in apply_gates(legacy, GATES, inc))
+
+
+def _tasks(suites: dict[str, list[int]]) -> dict:
+    items = {s: {f"{s}-{i}": v for i, v in enumerate(vals)} for s, vals in suites.items()}
+    return {"suites": {s: {"passed": sum(v), "n": len(v)} for s, v in suites.items()}, "items": items}
+
+
+def test_task_guard_is_paired_and_covers_small_suites():
+    from bittrellis.frontier.pareto import mcnemar_loss_p, task_guard
+
+    cfg = GATES["task_guard"]
+    inc = _tasks({"humaneval": [1, 1, 1, 1, 0], "ifeval": [1] * 6 + [0] * 2, "gsm8k": [1] * 100 + [0] * 32})
+    # the reviewer's case: every previously passed coding and instruction-following question lost
+    collapse = _tasks({"humaneval": [0] * 5, "ifeval": [0] * 8, "gsm8k": [1] * 100 + [0] * 32})
+    fails = task_guard(collapse, inc, cfg)
+    assert any("humaneval" in f for f in fails) and any("ifeval" in f for f in fails)
+    # losses balanced by gains on other questions are noise, not damage
+    swap = _tasks({"humaneval": [1, 1, 1, 0, 1], "ifeval": [1] * 6 + [0] * 2, "gsm8k": [0, 0] + [1] * 100 + [0] * 30})
+    assert task_guard(swap, inc, cfg) == []
+    # identical results pass; a different question set fails closed
+    assert task_guard(inc, inc, cfg) == []
+    assert any("same questions" in f for f in task_guard(_tasks({"humaneval": [1] * 4}), inc, cfg))
+    assert mcnemar_loss_p(0, 0) == 1.0 and abs(mcnemar_loss_p(5, 0) - 1 / 32) < 1e-12
+    # many small losses across the whole set are caught overall
+    drift = _tasks({"humaneval": [1, 1, 1, 1, 0], "ifeval": [1] * 6 + [0] * 2, "gsm8k": [0] * 12 + [1] * 88 + [0] * 32})
+    assert any("overall" in f or "gsm8k" in f for f in task_guard(drift, inc, cfg))
+
+
+def test_noise_level_differences_earn_nothing():
+    # the reviewer's reproduction: identical to V0 except decode 94.90 -> 94.91 tok/s
+    v0 = _row("V0", 0.1357, 94.90, 14760, 22.02)
+    clone = _row("clone", 0.1357, 94.91, 14760, 22.02)
+    rank([v0, clone], BOX, FLOORS, plain_quality)
+    assert clone.gain == 0.0
+    # just inside every floor on every axis: still nothing
+    near = _row("near", 0.1357 - 0.0019, 94.90 * 1.009, 14760 * 1.029, 22.02 - 0.09)
+    rank([_row("V0", 0.1357, 94.90, 14760, 22.02), near], BOX, FLOORS, plain_quality)
+    assert near.gain == 0.0
+    # a real decode gain earns, but only its part beyond the 1% floor
+    real = _row("real", 0.1357, 94.90 * 1.02, 14760, 22.02)
+    handicapped_only = _row("h", 0.1357 + 0.002, 94.90 * 1.02 * 0.99, 14760 * 0.97, 22.02 + 0.1)  # every axis
+    base = _row("V0", 0.1357, 94.90, 14760, 22.02)
+    rank([base, real], BOX, FLOORS, plain_quality)
+    assert real.gain > 0 and abs(real.gain - frontier_gain(handicapped_only, [base], BOX)) < 1e-12

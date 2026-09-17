@@ -9,8 +9,8 @@ benchmark. Two things differ from `run_quality.py`, both because it was not writ
   last-letter fallback then reads the "D" of "END".
 * Token caps are raised so Qwen3.8's step-by-step answers are not cut before the final line.
 
-Task scores are a *guard*, not the ranking signal: across ~200 items their noise is larger than
-most precision-map differences.
+Task scores are a *guard*, not the ranking signal. Per-item outcomes are kept so the guard can compare
+a candidate with V0 question by question (see frontier/pareto.py `task_guard`).
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def run_tasks(si: SparkInfer, model_dir: Path, out_dir: Path, tier: str, ctx: in
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     rq = _load_suite(si)
-    items = rq.load(set(), 0, tier)
+    items = rq.load(set(), 0, "" if tier == "full" else tier)  # "full": every item SparkInfer ships (784)
     proc = si.start_server(model_dir, port, ctx, out_dir / "server.log")
     t0 = time.time()
     jsonl = out_dir / "tasks.jsonl"
@@ -81,13 +81,15 @@ def run_tasks(si: SparkInfer, model_dir: Path, out_dir: Path, tier: str, ctx: in
 
 def summarize_tasks(jsonl: Path) -> dict:
     per: dict[str, list[int]] = {}
+    items: dict[str, dict[str, int]] = {}
     for line in Path(jsonl).read_text().splitlines():
         if not line.strip():
             continue
         r = json.loads(line)
         per.setdefault(r["benchmark"], []).append(1 if r["pass"] else 0)
+        items.setdefault(r["benchmark"], {})[str(r["id"])] = 1 if r["pass"] else 0
     suites = {b: {"passed": sum(v), "n": len(v), "rate": sum(v) / len(v)} for b, v in sorted(per.items())}
     total = sum(s["passed"] for s in suites.values())
     n = sum(s["n"] for s in suites.values())
     return {"suites": suites, "passed": total, "n": n, "rate": total / n if n else None,
-            "max_tokens": MAX_TOKENS}
+            "items": items, "max_tokens": MAX_TOKENS}

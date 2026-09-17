@@ -61,6 +61,48 @@ class Row:
 QualityCmp = Callable[[Row, Row], int]  # -1: a materially better, +1: a materially worse, 0: not distinguishable
 
 
+def mcnemar_loss_p(lost: int, gained: int) -> float:
+    """One-sided exact McNemar: probability of at least `lost` losses among the discordant items if
+    the candidate were no worse than the incumbent."""
+    from math import comb
+
+    n = lost + gained
+    return sum(comb(n, k) for k in range(lost, n + 1)) / 2**n if n else 1.0
+
+
+def task_guard(cand: dict, inc: dict, cfg: dict) -> list[str]:
+    """Paired, per-question comparison with the incumbent, overall and per suite.
+
+    Fails when the candidate loses significantly more questions than it gains (exact McNemar), or keeps
+    fewer than `min_suite_retention` of the questions the incumbent passes in any suite. A suite of five
+    questions can no longer lose everything and pass.
+    """
+    if "items" not in inc:
+        return ["task guard: the incumbent has no per-question results"]
+    if "items" not in cand:
+        return ["task guard: per-question results missing"]
+    fails, lost_all, gained_all = [], 0, 0
+    for suite, inc_items in sorted(inc["items"].items()):
+        got = cand["items"].get(suite)
+        if not got or set(got) != set(inc_items):
+            fails.append(f"task guard {suite}: not the same questions as the incumbent")
+            continue
+        lost = sum(1 for q, v in inc_items.items() if v and not got[q])
+        gained = sum(1 for q, v in inc_items.items() if not v and got[q])
+        kept = sum(1 for q, v in inc_items.items() if v and got[q])
+        lost_all, gained_all = lost_all + lost, gained_all + gained
+        passed = sum(inc_items.values())
+        p = mcnemar_loss_p(lost, gained)
+        if p < cfg["suite_alpha"]:
+            fails.append(f"task guard {suite}: lost {lost}, gained {gained} vs incumbent (p={p:.4f} < {cfg['suite_alpha']})")
+        elif passed and kept / passed < cfg["min_suite_retention"]:
+            fails.append(f"task guard {suite}: keeps {kept}/{passed} of the incumbent's passes (< {cfg['min_suite_retention']:.0%})")
+    p = mcnemar_loss_p(lost_all, gained_all)
+    if p < cfg["overall_alpha"]:
+        fails.append(f"task guard overall: lost {lost_all}, gained {gained_all} vs incumbent (p={p:.4f} < {cfg['overall_alpha']})")
+    return fails
+
+
 def apply_gates(row: Row, gates: dict, incumbent_tasks: dict | None) -> list[str]:
     fails = []
     if row.rp_kl > gates["rp_kl_max"]:
@@ -82,12 +124,7 @@ def apply_gates(row: Row, gates: dict, incumbent_tasks: dict | None) -> list[str
         if row.holdout == "FAIL":
             fails.append("private holdout FAIL")
     if row.tasks and incumbent_tasks:
-        for suite, s in incumbent_tasks["suites"].items():
-            got = row.tasks["suites"].get(suite)
-            if got is None:
-                fails.append(f"task suite {suite} missing")
-            elif s["passed"] - got["passed"] > gates["task_max_drop_items"]:
-                fails.append(f"task guard {suite}: {got['passed']}/{got['n']} vs incumbent {s['passed']}/{s['n']}")
+        fails += task_guard(row.tasks, incumbent_tasks, gates["task_guard"])
     row.gate_failures = fails
     return fails
 
@@ -136,12 +173,39 @@ def hypervolume(points: list[tuple[float, ...]]) -> float:
     return vol
 
 
-def frontier_gain(row: Row, incumbents: list[Row], box: dict) -> float:
-    """FG-2 of `row` against valid internal incumbents. External or invalid rows gain nothing."""
+def handicap(row: Row, floors: dict) -> Row:
+    """`row` made worse by the noise margin on every objective: only a gain larger than noise survives."""
+    from dataclasses import replace
+
+    return replace(
+        row,
+        rp_kl=row.rp_kl + floors["rp_kl"],
+        decode_tps=row.decode_tps * (1.0 - max(floors["decode_tps"], row.decode_spread)),
+        prefill_tps=row.prefill_tps * (1.0 - max(floors["prefill_tps"], row.prefill_spread)),
+        peak_gpu_gib=row.peak_gpu_gib + floors["peak_gpu_gib"],
+    )
+
+
+def distinct(row: Row, others: list[Row], floors: dict, quality_cmp: QualityCmp) -> bool:
+    """Materially better than every other valid internal row on at least one objective (same test as dominance)."""
+    for o in others:
+        signs = [quality_cmp(row, o)] + [_cmp_perf(row, o, k, floors[k]) for k, _ in OBJECTIVES[1:]]
+        if -1 not in signs:
+            return False
+    return True
+
+
+def frontier_gain(row: Row, incumbents: list[Row], box: dict, floors: dict | None = None) -> float:
+    """FG-2 of `row` against valid internal incumbents, with `row` handicapped by the noise margins.
+
+    External or invalid rows gain nothing. Without the handicap, a result identical to V0 except for a
+    0.01 tok/s decode difference would add a sliver of hypervolume and earn a tier.
+    """
     if row.kind != "internal" or not row.valid:
         return 0.0
     base = [normalize(r, box) for r in incumbents if r.kind == "internal" and r.valid]
-    return max(0.0, hypervolume(base + [normalize(row, box)]) - hypervolume(base))
+    point = normalize(handicap(row, floors) if floors else row, box)
+    return max(0.0, hypervolume(base + [point]) - hypervolume(base))
 
 
 def rank(rows: list[Row], box: dict, floors: dict, quality_cmp: QualityCmp) -> list[Row]:
@@ -149,7 +213,9 @@ def rank(rows: list[Row], box: dict, floors: dict, quality_cmp: QualityCmp) -> l
     pool = [r for r in rows if r.kind == "internal" and r.valid]
     for r in rows:
         r.frontier = id(r) in front
-        r.gain = frontier_gain(r, [o for o in rows if o is not r], box) if r.frontier else 0.0
+        others = [o for o in pool if o is not r]
+        credited = r.frontier and distinct(r, others, floors, quality_cmp)
+        r.gain = frontier_gain(r, [o for o in rows if o is not r], box, floors) if credited else 0.0
         if r.kind == "internal" and r.valid and not r.frontier:
-            r.dominated_by = [o.name for o in pool if o is not r and dominates(o, r, floors, quality_cmp)]
+            r.dominated_by = [o.name for o in others if dominates(o, r, floors, quality_cmp)]
     return rows

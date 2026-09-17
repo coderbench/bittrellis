@@ -31,7 +31,7 @@ runtime:
 hardware: {gpu: NVIDIA GeForce RTX 5090, count: 1, vram_mib: 32607}
 
 evaluation:
-  epoch: hpc01-e2
+  epoch: hpc01-e3
   corpus:
     public: data/corpus/hpc01-public-v2.json     # public development fidelity set
   score:
@@ -45,7 +45,7 @@ evaluation:
     primary_context: 4096
     memory_workload: "peak device memory over one process that loads the model with max_seq 16,384 and runs prefill + 512-token decode at 128, 4,096 and 16,384 context"
   tasks:
-    tier: benchmark            # SparkInfer bench/quality benchmark tier, 196 items, greedy, thinking off
+    tier: full                 # every SparkInfer bench/quality item (784: IFEval 34, GSM8K 132, MMLU-Pro 298, HumanEval 20, BFCL 300), greedy, thinking off
     server_ctx: 8192
   holdout:
     # Private rotating fidelity set: text never published during its epoch; results are PASS/FAIL.
@@ -92,7 +92,10 @@ frontier:
 gates:
   rp_kl_max: 0.30
   top1_min: 0.80
-  task_max_drop_items: 6       # per-suite pass-count drop vs V0 (binomial noise at n <= 75)
+  task_guard:                  # paired per-question comparison with V0 (exact one-sided McNemar)
+    overall_alpha: 0.05        # fail if all 784 questions together show significantly more losses than gains
+    suite_alpha: 0.01          # the same test per suite
+    min_suite_retention: 0.5   # and never keep fewer than half of V0's passes in any suite
   runtime_correctness: required
   long_context_guard:
     task: needle retrieval (3 codes at 10/50/90% depth), teacher-forced argmax on every code digit
@@ -101,11 +104,13 @@ gates:
 
 # Gittensor pays a merged PR by one trusted label (docs/rewards.md). The bot buckets the measured
 # frontier gain (FG-2) into the same eval:* tiers SparkInfer uses, so the registry entry can mirror it.
-# Thresholds are calibrated to the seeds: V0's structural gain (0.66%) is XL, V13's calibrated MLP
-# bytes (0.43%) are L, V1's all-Q4_K memory point (0.13%) is S.
+# FG-2 is computed noise-aware (a result is handicapped by the epsilon floors, and must beat every other
+# result beyond noise somewhere), then bucketed. Calibrated to the seeds' noise-aware gains: V13's
+# calibrated MLP bytes (0.30%) are L, V0 (0.19%) is M, V4/V1 (0.05/0.04%) are S, V6/V5 are XS.
+# A gain below XS -- e.g. a copy of V0 that differs only within noise -- is eval:none.
 rewards:
   label_family: eval
-  tiers_fg2: {XL: 0.0060, L: 0.0030, M: 0.0015, S: 0.0007}   # minimum FG-2 per tier; any smaller credited gain is XS
+  tiers_fg2: {XL: 0.0050, L: 0.0025, M: 0.0012, S: 0.00035, XS: 0.00005}   # minimum FG-2 per tier
   proposed_multipliers: {XL: 4.0, L: 2.5, M: 1.5, S: 1.0, XS: 0.5, none: 0.0, REJECT: 0.0}
 
 # External reference points: context only.

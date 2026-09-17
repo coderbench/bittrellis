@@ -88,13 +88,22 @@ def test_every_comment_leads_with_the_score():
 
 def test_tiers_are_calibrated_to_the_seed_gains():
     t = pr_bot.REWARDS["tiers_fg2"]
-    seeds = {"V0": 0.00664, "V13": 0.00435, "V1": 0.00126, "V4": 0.00102, "V6": 0.00047}
-    assert {k: pr_bot.tier_for("frontier", g, t) for k, g in seeds.items()} == {"V0": "XL", "V13": "L", "V1": "S", "V4": "S", "V6": "XS"}
+    seeds = {"V13": 0.003013, "V0": 0.001934, "V4": 0.00052, "V1": 0.000397, "V6": 0.000238, "V5": 0.000073, "noise": 0.00004}
+    assert {k: pr_bot.tier_for("frontier", g, t) for k, g in seeds.items()} == \
+        {"V13": "L", "V0": "M", "V4": "S", "V1": "S", "V6": "XS", "V5": "XS", "noise": "none"}
     assert pr_bot.tier_for("frontier", 0.0, t) == "none"
     assert pr_bot.tier_for("dominated", 0.004, t) == "none"
     assert pr_bot.tier_for("gate", None, t) == pr_bot.tier_for("same-encoder", None, t) == "REJECT"
     assert pr_bot.tier_for("queued", None, t) is None and pr_bot.tier_for("needs_approval", None, t) is None
     assert set(pr_bot.REWARDS["proposed_multipliers"]) == {*pr_bot.TIERS, "none", "REJECT"}
+
+
+def test_no_holdout_pass_no_paid_tier():
+    row = {"valid": True, "frontier": True, "frontier_gain": 0.003}
+    assert pr_bot.status_from_row({**row, "holdout": "PASS"}) == "frontier"
+    assert pr_bot.status_from_row({**row, "holdout": None}) == "provisional"
+    assert pr_bot.tier_for("provisional", 0.003, pr_bot.REWARDS["tiers_fg2"]) is None
+    assert "no paid tier" in pr_bot.score_header("provisional")
 
 
 def test_merge_first_prefers_tier_then_gain_then_first_seen():

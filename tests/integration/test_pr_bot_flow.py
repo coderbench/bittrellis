@@ -65,6 +65,10 @@ def bot(tmp_path, monkeypatch):
         if cmd[0] == "git":
             return 0
         sub = cmd[3]
+        if sub == "holdout":
+            art = Path(cmd[cmd.index("--artifact") + 1])
+            (art / "holdout.json").write_text(json.dumps({"epoch": "test", "result": "PASS"}))
+            return 0
         work = Path(cmd[4]).parent if sub in ("manifest", "build") else Path(cmd[cmd.index("--out") + 1]).parent
         sha = next(s for s in recipes if work.name.endswith(s[:12]))
         if sub == "manifest":
@@ -105,7 +109,7 @@ def bot(tmp_path, monkeypatch):
     monkeypatch.setattr(pr_bot, "run", fake_run)
     monkeypatch.setattr(pr_bot.subprocess, "run", fake_subprocess_run)
     args = SimpleNamespace(root=str(tmp_path / "eval"), base="/nonexistent", shipped="/nonexistent", unsloth="/nonexistent",
-                           sparkinfer="/nonexistent", reference="/nonexistent", seeds=str(SEEDS), private=None,
+                           sparkinfer="/nonexistent", reference="/nonexistent", seeds=str(SEEDS), private="/nonexistent-private",
                            keep_checkpoints=False)
     return SimpleNamespace(args=args, recipes=recipes, stages=stages_run)
 

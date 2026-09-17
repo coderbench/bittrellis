@@ -114,7 +114,7 @@ def row_dict(r: Row) -> dict:
         "decode_tps": r.decode_tps, "decode_spread": r.decode_spread, "prefill_tps": r.prefill_tps,
         "prefill_spread": r.prefill_spread, "peak_gpu_gib": r.peak_gpu_gib,
         "resident_after_load_gib": r.extra.get("resident_after_load_gib"), "peak_host_gib": r.extra.get("peak_host_gib"),
-        "checkpoint_gib": r.extra.get("checkpoint_gib"), "tasks_passed": (r.tasks or {}).get("passed"),
+        "checkpoint_gib": r.extra.get("checkpoint_gib"), "tasks_passed": (r.tasks or {}).get("passed"), "tasks_n": (r.tasks or {}).get("n"),
         "holdout": r.holdout, "valid": r.valid, "gate_failures": r.gate_failures,
         "frontier": r.frontier, "frontier_gain": r.gain if r.kind == "internal" else None, "dominated_by": r.dominated_by,
     }

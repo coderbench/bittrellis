@@ -79,6 +79,7 @@ LABELS = {
     "queued": ("bt:queued", "c5def5", "waiting: the author's earlier PRs are ahead in the queue"),
     "needs_approval": ("bt:needs-approval", "fbca04", "runs contributed code; waiting for a maintainer's eval-approved"),
     "copy-review": ("bt:copy-review", "e99a1c", "repeated near-copies of other authors' PRs; waiting for a maintainer"),
+    "provisional": ("bt:provisional", "bfd4f2", "measured without a private holdout PASS; no paid tier"),
     "evaluator": ("bt:touches-evaluator", "1d76db", "changes evaluator paths; maintainer review, not evaluated"),
     "invalid": ("bt:invalid-manifest", "f4a6a6", "the manifest does not validate; fix and push"),
     "build": ("bt:build-fail", "f4a6a6", "the checkpoint or quantizer probe did not build; fix and push"),
@@ -242,13 +243,16 @@ def reference_entries(me: dict, state: dict, live_heads: dict[int, str]) -> list
 def status_from_row(row: dict) -> str:
     if not row["valid"]:
         return "gate"
-    return "frontier" if row["frontier"] and (row["frontier_gain"] or 0) > 0 else "dominated"
+    if not (row["frontier"] and (row["frontier_gain"] or 0) > 0):
+        return "dominated"
+    # A paid tier needs an explicit private-holdout PASS; without one the result is only provisional.
+    return "frontier" if row.get("holdout") == "PASS" else "provisional"
 
 
 # ── comment ────────────────────────────────────────────────────────────────────────────────────
 
 
-PENDING = {"queued", "needs_approval", "copy-review", "evaluator", "error"}
+PENDING = {"queued", "needs_approval", "copy-review", "evaluator", "error", "provisional"}
 NOT_MEASURED = {"memory", "invalid", "build", "same-encoder", "nondeterministic", "audit"}
 def _rewards() -> dict:
     import yaml
@@ -269,7 +273,7 @@ def tier_for(label: str, gain: float | None, thresholds: dict) -> str | None:
         return "REJECT"
     if label != "frontier" or not gain or gain <= 0:
         return "none"
-    return next((t for t in ("XL", "L", "M", "S") if gain >= thresholds[t]), "XS")
+    return next((t for t in TIERS if gain >= thresholds[t]), "none")
 
 
 def pick_merge_first(candidates: list[dict]) -> dict | None:
@@ -281,6 +285,8 @@ def pick_merge_first(candidates: list[dict]) -> dict | None:
 
 def score_header(label: str, row: dict | None = None) -> str:
     """The first line of every bot comment: the PR's score and whether it is credited."""
+    if label == "provisional":
+        return "**Score: pending** · no private holdout PASS, so no paid tier"
     if label in PENDING:
         return "**Score: pending** · not evaluated yet"
     if label == "duplicate":
@@ -306,14 +312,19 @@ def render_comment(name: str, cid: str, frontier: dict | None, cmp: dict | None,
     lines = [f"### BitTrellis evaluation · `{name}` · `{cid}`", "", score_header(label, row), "",
              f"Epoch `{epoch}` · status **{LABELS[label][0]}**", ""]
     if row:
-        lines += ["| | RP-KL ↓ | decode tok/s ↑ | prefill 4K tok/s ↑ | peak GPU GiB ↓ | holdout | FG-2 |",
-                  "|---|---:|---:|---:|---:|---|---:|",
-                  f"| **this PR** | {row['rp_kl']:.4f} | {row['decode_tps']:.1f} | {row['prefill_tps']:,.0f} | "
+        def tasks(r: dict) -> str:
+            return f"{r['tasks_passed']}/{r['tasks_n']}" if r.get("tasks_n") else "not run"
+
+        lines += ["| | RP-KL ↓ | tasks passed ↑ | decode tok/s ↑ | prefill 4K tok/s ↑ | peak GPU GiB ↓ | holdout | FG-2 |",
+                  "|---|---:|---:|---:|---:|---:|---|---:|",
+                  f"| **this PR** | {row['rp_kl']:.4f} | {tasks(row)} | {row['decode_tps']:.1f} | {row['prefill_tps']:,.0f} | "
                   f"{row['peak_gpu_gib']:.2f} | {row['holdout'] or 'not run'} | {100 * (row['frontier_gain'] or 0):.3f}% |"]
         inc = next((r for r in frontier["internal"] if r["name"] == frontier["incumbent"]), None)
         if inc:
-            lines.append(f"| V0 incumbent | {inc['rp_kl']:.4f} | {inc['decode_tps']:.1f} | {inc['prefill_tps']:,.0f} | "
+            lines.append(f"| V0 incumbent | {inc['rp_kl']:.4f} | {tasks(inc)} | {inc['decode_tps']:.1f} | {inc['prefill_tps']:,.0f} | "
                          f"{inc['peak_gpu_gib']:.2f} | — | — |")
+        lines += ["", "RP-KL measures how closely the model keeps the original's predictions (fidelity), not task accuracy; "
+                  "tasks are a guard, compared with V0 question by question."]
         if cmp:
             k = cmp["rp_kl"]
             lines += ["", f"Paired RP-KL vs V0: **{k['delta']:+.4f}** nats/token, 95% CI [{k['ci95'][0]:+.4f}, {k['ci95'][1]:+.4f}]"
@@ -655,7 +666,7 @@ class Evaluator:
             if run(ev + ["--stages", "performance"] + reuse, REPO_ROOT, log) != 0:
                 raise RuntimeError("performance stage failed")
             frontier, row, refs = self._rank(me, art, open_prs, work)
-            if status_from_row(row) != "frontier":
+            if status_from_row(row) not in ("frontier", "provisional"):  # the holdout has not run yet at this stage
                 skipped = ["tasks", "holdout"]
                 label = status_from_row(row)
                 notes.append("Tasks and private holdout skipped: they can only fail a result, and this one is already "
@@ -678,7 +689,7 @@ class Evaluator:
             timings["holdout_seconds"] = round(time.time() - t0, 1)
             (art / "timings.json").write_text(json.dumps(timings) + "\n")
         else:
-            notes.append("private holdout not configured on this evaluator; result is provisional")
+            notes.append("No private holdout on this evaluator: the result is provisional and gets no paid tier.")
         frontier, row, refs = self._rank(me, art, open_prs, work)
         return self._report(pr, cand, art, ckpt, frontier, status_from_row(row), notes, screen, refs, skipped, finish, work)
 
@@ -813,7 +824,7 @@ class Evaluator:
             tier = tier_for(label, row.get("frontier_gain"), REWARDS["tiers_fg2"])
             if label == e["status"] and tier == e.get("tier"):
                 continue
-            if label == "frontier" and e.get("skipped"):
+            if label in ("frontier", "provisional") and e.get("skipped"):
                 e["status"] = "resume"  # measured tasks and holdout never ran; the next pass rebuilds and finishes it
                 self.gh.comment(pr["number"], f"{score_header('queued')}\n\nBitTrellis evaluator: an earlier PR this result was ranked against has "
                                 "closed, so it is no longer dominated. Resuming: tasks and private holdout.")
