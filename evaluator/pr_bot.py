@@ -86,7 +86,7 @@ LABELS = {
 }
 EXTRA_LABELS = {"derivative": ("bt:derivative", "c5def5", "close to an earlier PR by another author; credited for what it adds")}
 APPROVED, COPY_CLEARED = "eval-approved", "copy-cleared"
-RESCREEN = {"queued", "needs-approval", "copy-review"}   # re-checked every pass
+RESCREEN = {"queued", "needs-approval", "copy-review", "unsafe-host"}   # re-checked every pass
 RANKED = {"frontier", "dominated", "gate"}
 MAX_ERRORS = 3
 
@@ -258,11 +258,12 @@ class Evaluator:
         self.state_path = self.root / "state.json"
         self.state: dict = json.loads(self.state_path.read_text()) if self.state_path.exists() else {}
         self.state.setdefault("_merged", {})
-        secret = self.root / "secret.txt"
+        secret = self.secret_path = self.root / "secret.txt"
         if not secret.exists():
             secret.write_text(secrets.token_hex(32) + "\n")
-            secret.chmod(0o600)
+        secret.chmod(0o600)
         self.secret = secret.read_text().strip()
+        self.sandbox = None
         self.probe_seed = int(hashlib.sha256(f"{self.secret}:probe".encode()).hexdigest()[:8], 16)
         self.py = [sys.executable, "-m", "bittrellis.cli"]
         self.env_args = ["--base", args.base, "--shipped", args.shipped, "--unsloth", args.unsloth]
@@ -374,12 +375,25 @@ class Evaluator:
                 finish("queued", "queued")
             return None
 
-        code = work / "code"
+        untrusted = kind == "code"
+        if untrusted:
+            problems = self.sandbox_problems()
+            if problems:
+                if self.state.get(key, {}).get("status") != "unsafe-host":
+                    finish("unsafe-host", "error", "BitTrellis evaluator: this PR runs contributed code, and this evaluation "
+                           "host is not isolated yet, so it is not evaluated. A maintainer has been notified.\n\n"
+                           + "\n".join(f"- {p}" for p in problems))
+                return None
+        code = (work / "untrusted" / "code") if untrusted else (work / "code")
+        code.parent.mkdir(parents=True, exist_ok=True)
         if code.exists():
             run(["git", "worktree", "remove", "--force", str(code)], REPO_ROOT, log)
             shutil.rmtree(code, ignore_errors=True)
         run(["git", "fetch", "--quiet", "origin", f"pull/{number}/head", "main"], REPO_ROOT, log)
         run(["git", "worktree", "add", "--force", "--detach", str(code), sha if kind == "code" else "origin/main"], REPO_ROOT, log)
+        if untrusted:
+            os.chmod(work, 0o711)
+            self.sandbox.own(code.parent)
         try:
             return self._evaluate_in(pr, me, kind, manifests, labels, work, code, log, finish, open_prs, resume)
         finally:
@@ -387,19 +401,28 @@ class Evaluator:
 
     def _evaluate_in(self, pr, me, kind, manifests, labels, work, code, log, finish, open_prs, resume):
         from bittrellis import fingerprint as F
+        from bittrellis.manifest import candidate_hash_keys
         from bittrellis.model.qwen38 import Qwen38Arch
 
         number, sha = pr["number"], pr["head"]["sha"]
+        untrusted = kind == "code"
+        utr = work / "untrusted" if untrusted else work   # where contributed code may write
+        xrun = self._runner(untrusted)
         notes: list[str] = []
-        manifest = work / "manifest.yaml"
+        manifest = utr / "manifest.yaml"
         manifest.write_text(subprocess.run(["git", "show", f"{sha}:{manifests[0]}"], cwd=REPO_ROOT,
                                            capture_output=True, text=True).stdout)
-        ids = work / "ids.json"
-        if run(self.py + ["manifest", str(manifest), "--ids-out", str(ids), "--shipped", self.args.shipped], code, log) != 0 or not ids.exists():
+        if untrusted:
+            self.sandbox.own(utr)
+        ids = utr / "ids.json"
+        if xrun(self.py + ["manifest", str(manifest), "--ids-out", str(ids), "--shipped", self.args.shipped], code, log) != 0 or not ids.exists():
             return finish("invalid", "invalid", "BitTrellis evaluator: the manifest does not validate:\n\n```\n"
                           + log.read_text()[-3000:] + "\n```")
         ident = json.loads(ids.read_text())
         cid, keys = ident["id"], ident["keys"]
+        if candidate_hash_keys(self.track.id, keys) != cid:
+            return finish("invalid", "invalid", "BitTrellis evaluator: the candidate id reported by this PR's code does not "
+                          "match its recipe.")
         units = Qwen38Arch().units()
         numel = {u.id: u.numel for u in units}
 
@@ -434,8 +457,8 @@ class Evaluator:
         # ---- screen: new quantizers, by probe bytes ----
         new_refs: list[str] = []
         if kind == "code":
-            pr_probe, pr_repeat = work / "probe.npz", work / "probe-repeat.npz"
-            if run(self.py + ["fingerprint", "--seed", str(self.probe_seed), "--out", str(pr_probe), "--repeat-out", str(pr_repeat)],
+            pr_probe, pr_repeat = utr / "probe.npz", utr / "probe-repeat.npz"
+            if xrun(self.py + ["fingerprint", "--seed", str(self.probe_seed), "--out", str(pr_probe), "--repeat-out", str(pr_repeat)],
                    code, log, timeout=1800) != 0:
                 return finish("build", "build", "BitTrellis evaluator: the quantizer probe failed to run:\n\n```\n"
                               + log.read_text()[-3000:] + "\n```", screen=screen)
@@ -461,12 +484,18 @@ class Evaluator:
             self.obs.annotate(number, sha, quantizers=new_refs)
 
         # ---- build and audit (CPU) ----
-        ckpt, art = work / "checkpoint", work / "artifact"
+        ckpt, art = (work / "sealed" / "checkpoint") if untrusted else (work / "checkpoint"), work / "artifact"
         if not (ckpt / "bittrellis_build.json").exists():
             shutil.rmtree(ckpt, ignore_errors=True)
-            if run(self.py + ["build", str(manifest), "--out", str(ckpt)] + self.env_args, code, log) != 0:
+            out = utr / "checkpoint"
+            shutil.rmtree(out, ignore_errors=True)
+            # the sandbox cannot write the sources' verification cache; the trusted audit verifies every source
+            if xrun(self.py + ["build", str(manifest), "--out", str(out)] + (["--no-verify"] if untrusted else []) + self.env_args,
+                    code, log) != 0:
                 return finish("build", "build", "BitTrellis evaluator: the checkpoint did not build:\n\n```\n"
                               + log.read_text()[-3000:] + "\n```", screen=screen)
+            if untrusted:
+                self.sandbox.seal(out, ckpt)
 
         # ---- screen: the new encoder's real stored bytes ----
         if new_refs:
@@ -476,13 +505,18 @@ class Evaluator:
                 return finish(sv.outcome, sv.outcome, f"BitTrellis evaluator: **not measured**. {sv.reason}.", screen=screen)
 
         ev = self.py + ["evaluate", str(ckpt), "--out", str(art), "--sparkinfer", self.args.sparkinfer,
-                        "--reference", self.args.reference] + self.env_args
+                        "--reference", self.args.reference, "--sample-secret-file", str(self.secret_path)] + self.env_args
         reuse = ["--audit-json", str(art / "audit.json")]
+        if untrusted and not resume:
+            failed = self._isolated_audit(cid, keys, units, manifest, code, utr, work, ckpt, art, xrun, log)
+            if failed is not None:
+                return finish("audit", "audit", "BitTrellis evaluator: **audit failed**.\n\n" + "\n".join(f"- {e}" for e in failed[:20]),
+                              screen=screen)
         gates = self.track["gates"]
         skipped: list[str] = []
         if not resume:
             # ---- stage 1: quality ----
-            rc = run(ev + ["--stages", "quality"], code, log)
+            rc = run(ev + ["--stages", "quality"] + (reuse if untrusted else []), REPO_ROOT, log)
             cand = json.loads((art / "candidate.json").read_text()) if (art / "candidate.json").exists() else {}
             if cand.get("audit_ok") is False:
                 audit = json.loads((art / "audit.json").read_text())
@@ -497,7 +531,7 @@ class Evaluator:
                               notes + ["Quality gates failed; speed runs, tasks and holdout skipped:", *fails], screen,
                               self._timings(art)), screen=screen, artifact=str(art), name=cand["name"])
             # ---- stage 2: performance ----
-            if run(ev + ["--stages", "performance"] + reuse, code, log) != 0:
+            if run(ev + ["--stages", "performance"] + reuse, REPO_ROOT, log) != 0:
                 raise RuntimeError("performance stage failed")
             frontier, row, refs = self._rank(me, art, open_prs, work)
             if status_from_row(row) != "frontier":
@@ -508,7 +542,7 @@ class Evaluator:
                 return self._report(pr, cand, art, ckpt, frontier, label, notes, screen, refs, skipped, finish, work)
         # ---- stage 3: tasks and holdout ----
         cand = json.loads((art / "candidate.json").read_text())
-        if run(ev + ["--stages", "tasks"] + reuse, code, log) != 0:
+        if run(ev + ["--stages", "tasks"] + reuse, REPO_ROOT, log) != 0:
             raise RuntimeError("tasks stage failed")
         if self.args.private:
             incumbent = Path(self.args.seeds) / self.track["frontier"]["incumbent"]
@@ -528,6 +562,50 @@ class Evaluator:
         return self._report(pr, cand, art, ckpt, frontier, status_from_row(row), notes, screen, refs, skipped, finish, work)
 
     # ---- helpers --------------------------------------------------------------------------
+
+    def sandbox_problems(self) -> list[str]:
+        if self.args.no_sandbox:
+            return []
+        try:
+            from sandbox import Sandbox
+
+            self.sandbox = Sandbox(self.args.sandbox_user)
+        except KeyError:
+            return [f"sandbox account {self.args.sandbox_user} does not exist (run evaluator/setup_sandbox.sh)"]
+        secrets_ = [self.secret_path, self.state_path, Path(self.args.token_file)] if self.args.token_file else [self.secret_path, self.state_path]
+        protected = [self.accepted, self.obs.dir] + ([Path(self.args.private)] if self.args.private else [])
+        return self.sandbox.problems(secrets_, protected, [Path(self.args.base), Path(self.args.shipped), Path(self.args.unsloth)])
+
+    def _runner(self, untrusted: bool):
+        if not untrusted or self.args.no_sandbox:
+            return run
+        python_bin = str(Path(sys.executable).parent)
+        return lambda cmd, cwd, log, timeout=6 * 3600: self.sandbox.run(cmd, cwd, log, python_bin, timeout)
+
+    def _isolated_audit(self, cid, keys, units, manifest, code, utr, work, ckpt, art, xrun, log) -> list[str] | None:
+        """Contributed code regenerates secret samples without the checkpoint; trusted code compares."""
+        from bittrellis import quantizers as Q
+        from bittrellis.manifest import Assignment
+        from bittrellis.validate import regenerable_samples
+
+        assignments = {uid: Assignment(k.split("@", 1)[0], k.split("@", 2)[1]) for uid, k in keys.items()}
+        foreign = sorted({a.quantizer for a in assignments.values()} - set(Q.REGISTRY))
+        targets = sorted({u.id for q in foreign for u in regenerable_samples(units, assignments, q, f"{cid}:{self.secret}")})
+        regen, sealed = utr / "regen", work / "sealed" / "regen"
+        shutil.rmtree(regen, ignore_errors=True)
+        shutil.rmtree(sealed, ignore_errors=True)
+        if targets:
+            if xrun(self.py + ["regenerate", str(manifest), "--units", ",".join(targets), "--out", str(regen)] + self.env_args,
+                    code, log) != 0:
+                return ["the contributed quantizer failed to regenerate the audit samples"]
+            self.sandbox.seal(regen, sealed)
+        else:
+            sealed.mkdir(parents=True, exist_ok=True)
+        art.mkdir(parents=True, exist_ok=True)
+        run(self.py + ["audit", str(ckpt), "--out", str(art / "audit.json"), "--sample-secret-file", str(self.secret_path),
+                       "--regenerated", str(sealed)] + self.env_args, REPO_ROOT, log)
+        doc = json.loads((art / "audit.json").read_text()) if (art / "audit.json").exists() else {"ok": False, "errors": ["audit crashed"]}
+        return None if doc["ok"] else doc["errors"]
 
     def _sketch_guard(self, me, number, sha, keys, new_refs, units, ckpt, earlier) -> G.Verdict:
         from bittrellis import fingerprint as F
@@ -628,6 +706,10 @@ def main() -> int:
     ap.add_argument("--seeds", default=str(REPO_ROOT / "results/feasibility/artifacts"))
     ap.add_argument("--private", help="private holdout directory (see bittrellis/holdout.py)")
     ap.add_argument("--keep-checkpoints", action="store_true")
+    ap.add_argument("--sandbox-user", default=os.environ.get("BT_SANDBOX_USER", "bt-sandbox"),
+                    help="unprivileged account that runs contributed code (evaluator/setup_sandbox.sh)")
+    ap.add_argument("--token-file", default=os.environ.get("BT_TOKEN_FILE"), help="checked to be unreadable by the sandbox")
+    ap.add_argument("--no-sandbox", action="store_true", help="run contributed code as the evaluator (never on a host with secrets)")
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--interval", type=int, default=600)
     args = ap.parse_args()

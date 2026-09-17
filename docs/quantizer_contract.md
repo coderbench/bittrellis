@@ -91,7 +91,9 @@ bytes. It is a diagnostic; legitimacy comes from lineage.
 ## Checklist for a quantizer PR
 
 - [ ] one module in `bittrellis/quantizers/`, registered in `__init__.py`
+- [ ] a **new name** (the evaluator runs contributed code only in its sandbox and knows it by name and version)
 - [ ] `version` set; bumped if the produced bytes change
+- [ ] does not reproduce an existing encoder's bytes (the evaluator compares output bytes, not code)
 - [ ] deterministic: `pytest` includes a test that encodes the tiny synthetic model twice and compares bytes
 - [ ] one manifest in `manifests/` that uses it, with the hypothesis in `description`
 - [ ] no changes to evaluator paths (see [CONTRIBUTING.md](../CONTRIBUTING.md))

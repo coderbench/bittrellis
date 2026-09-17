@@ -187,7 +187,12 @@ class Manifest:
 
 def candidate_hash(track: str, assignments: dict[str, Assignment]) -> str:
     """Content address of a candidate: track + every unit's FORMAT@quantizer@version[+params]."""
-    payload = {"track": track, "units": {k: a.key() for k, a in sorted(assignments.items())}}
+    return candidate_hash_keys(track, {k: a.key() for k, a in assignments.items()})
+
+
+def candidate_hash_keys(track: str, keys: dict[str, str]) -> str:
+    """`candidate_hash` from assignment keys alone, without looking any quantizer up."""
+    payload = {"track": track, "units": dict(sorted(keys.items()))}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
 
 

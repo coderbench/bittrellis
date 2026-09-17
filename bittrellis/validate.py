@@ -136,11 +136,52 @@ def _replay_key(qz: Q.Quantizer, units: list[Unit], assignments: dict[str, Assig
     return hashlib.sha256(json.dumps([qz.ref, base_rev, prefix]).encode()).hexdigest()
 
 
-def _check_regenerable(qz: Q.Quantizer, units: list[Unit], assignments: dict[str, Assignment],
-                       ck: SafeTensorsDir, ctx: Q.QuantContext, seed: str, res: AuditResult) -> dict:
+def regenerate(qz: Q.Quantizer, units: list[Unit], assignments: dict[str, Assignment], ctx: Q.QuantContext,
+               targets: set[str]) -> dict[str, bytes]:
+    """The tensors `qz` produces for the `targets` units, replaying its pipeline in order when sequential."""
     mine = [u for u in units if assignments[u.id].quantizer == qz.name]
-    sampled = _sample_units(mine, seed, REGEN_SAMPLES_PER_QUANTIZER)
+    remaining = set(targets)
+    out: dict[str, bytes] = {}
+    qz.begin(ctx)
+    for u in (mine if qz.replay_mode == "sequential" else [u for u in mine if u.id in targets]):
+        if not remaining:
+            break
+        remaining.discard(u.id)
+        for lin in u.linears:
+            produced = encode_unit(qz, ctx, u, lin, assignments[u.id])
+            if u.id in targets:
+                out.update({lin.prefix + suf: _bytes_of(data) for suf, _dtype, _shape, data in produced})
+    return out
+
+
+def regenerable_samples(units: list[Unit], assignments: dict[str, Assignment], qname: str, seed: str) -> list[Unit]:
+    """Units of quantizer `qname` the audit rebuilds. `seed` is the candidate id, plus the evaluator's
+    secret when one is set, so a submission cannot know in advance which units are checked."""
+    return _sample_units([u for u in units if assignments[u.id].quantizer == qname], seed, REGEN_SAMPLES_PER_QUANTIZER)
+
+
+def _check_regenerable(qz: Q.Quantizer, units: list[Unit], assignments: dict[str, Assignment],
+                       ck: SafeTensorsDir, ctx: Q.QuantContext, seed: str, res: AuditResult,
+                       regenerated_dir: Path | None = None) -> dict:
+    mine = [u for u in units if assignments[u.id].quantizer == qz.name]
+    sampled = regenerable_samples(units, assignments, qz.name, seed)
     targets = {u.id for u in sampled}
+    info = {"lineage": "regenerable", "replay_mode": qz.replay_mode, "units": len(mine), "sampled": sorted(targets)}
+    if regenerated_dir is not None:
+        # Contributed code regenerated the samples in isolation, without access to this checkpoint;
+        # only the comparison happens here.
+        compared = 0
+        for u in sampled:
+            for lin in u.linears:
+                files = sorted(Path(regenerated_dir).glob(f"{lin.prefix}.*.bin"))
+                if not files:
+                    res.fail(f"{lin.prefix}: no regeneration by {qz.ref} was provided")
+                for f in files:
+                    name = f.name[: -len(".bin")]
+                    compared += 1
+                    if ck.get(name) is None or bytes(ck.raw(name)) != f.read_bytes():
+                        res.fail(f"{name}: does not match a regeneration by {qz.ref} -- not produced by the declared quantizer")
+        return {**info, "replay_mode": "isolated", "tensors_compared": compared}
     cache = replay_cache_dir()
     # Replays are shared: a unit whose replay key was regenerated before (by any candidate) is checked
     # against the cached tensor hashes instead of being rebuilt.
@@ -154,39 +195,28 @@ def _check_regenerable(qz: Q.Quantizer, units: list[Unit], assignments: dict[str
                     res.fail(f"{name}: does not match a regeneration by {qz.ref} -- not produced by the declared quantizer")
             targets.discard(u.id)
             cached_hits += 1
-    remaining = set(targets)
-    qz.begin(ctx)
     replayed = 0
-    # Sequential quantizers are replayed in pipeline order from the first unit, because a deep
-    # tensor may depend on every quantized tensor before it; independent ones only rebuild samples.
-    for u in (mine if qz.replay_mode == "sequential" else sampled):
-        if not remaining:
-            break
-        remaining.discard(u.id)
-        digests: dict[str, str] = {}
-        for lin in u.linears:
-            produced = encode_unit(qz, ctx, u, lin, assignments[u.id])
-            replayed += 1
-            if u.id not in targets:
-                continue
-            for suf, _dtype, _shape, data in produced:
-                name = lin.prefix + suf
-                blob = _bytes_of(data)
-                digests[name] = hashlib.sha256(blob).hexdigest()
-                if ck.get(name) is None or bytes(ck.raw(name)) != blob:
-                    res.fail(f"{name}: does not match a regeneration by {qz.ref} -- not produced by the declared quantizer")
-        if u.id in targets and digests:
+    produced = regenerate(qz, units, assignments, ctx, targets) if targets else {}
+    for name, blob in produced.items():
+        replayed += 1
+        if ck.get(name) is None or bytes(ck.raw(name)) != blob:
+            res.fail(f"{name}: does not match a regeneration by {qz.ref} -- not produced by the declared quantizer")
+    for u in sampled:
+        digests = {n: hashlib.sha256(b).hexdigest() for n, b in produced.items() if n.rsplit(".", 1)[0] in {lin.prefix for lin in u.linears}}
+        if digests:
             try:
                 cache.mkdir(parents=True, exist_ok=True)
                 (cache / f"{_replay_key(qz, units, assignments, u)}.json").write_text(json.dumps(digests))
             except OSError:
                 pass
-    return {"lineage": "regenerable", "replay_mode": qz.replay_mode, "units": len(mine),
-            "sampled": sorted({u.id for u in sampled}), "replayed_linears": replayed, "replay_cache_hits": cached_hits}
+    return {**info, "replayed_tensors": replayed, "replay_cache_hits": cached_hits}
 
 
 def audit(ckpt_dir: str | Path, manifest: Manifest, source_dirs: dict[str, Path],
-          check_bytes: bool = True, verify_sources: bool = True, log=None) -> AuditResult:
+          check_bytes: bool = True, verify_sources: bool = True, log=None, sample_secret: str = "",
+          regenerated_dir: Path | None = None) -> AuditResult:
+    """`sample_secret` makes the regenerated samples unpredictable; `regenerated_dir` holds tensors that
+    foreign (contributed) quantizers regenerated in isolation, compared here instead of being executed."""
     res = AuditResult()
     ckpt_dir = Path(ckpt_dir)
     frozen_dir = Path(source_dirs["gittensor_nvfp4"])
@@ -273,11 +303,12 @@ def audit(ckpt_dir: str | Path, manifest: Manifest, source_dirs: dict[str, Path]
                 res.fail(f"{len(extra)} unexpected tensors, e.g. {extra[:5]}")
 
             if res.ok:
-                seed = manifest.candidate_id(units)
+                seed = manifest.candidate_id(units) + (f":{sample_secret}" if sample_secret else "")
                 for qname in sorted({a.quantizer for a in assignments.values()}):
                     qz = Q.get(qname)
                     if qz.lineage == "regenerable":
-                        res.lineage[qz.ref] = _check_regenerable(qz, units, assignments, ck, ctx, seed, res)
+                        isolated = regenerated_dir if isinstance(qz, Q.Foreign) else None
+                        res.lineage[qz.ref] = _check_regenerable(qz, units, assignments, ck, ctx, seed, res, isolated)
                     else:
                         res.lineage[qz.ref] = {"lineage": qz.lineage, "source": qz.source_id or "base",
                                                "units": sum(1 for a in assignments.values() if a.quantizer == qname),

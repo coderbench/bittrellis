@@ -22,9 +22,9 @@ Code: [`evaluator/guards.py`](../evaluator/guards.py), [`bittrellis/fingerprint.
                        another author                                   bt:copy-review (3rd in an epoch)
    5 memory            predicted peak > 31.5 GiB                         bt:memory
    6 new quantizers    deterministic, and not an existing encoder       bt:nondeterministic
-                       (probe bytes)                                    bt:same-encoder
+                       (probe bytes, run in the sandbox)                bt:same-encoder
                                                           │
- BUILD + AUDIT (CPU, ~3 min) ─────────────────────────────┤
+ BUILD (sandbox for code PRs) + AUDIT (trusted, CPU) ────┤
    7 stored bytes      a new encoder's real bytes vs every existing     bt:same-encoder
                        encoder's bytes for the same tensors
                                                           │
@@ -107,6 +107,39 @@ regenerable quantizer to be deterministic, so its bytes identify it.
 A version bump that does not change the bytes (`rtn@v2` identical to `rtn@v1`) is also the same
 encoder.
 
+## Isolation: contributed code produces, trusted code judges
+
+A quantizer PR executes contributed code. It runs **only** in four CPU steps, as the unprivileged
+account `bt-sandbox` ([`evaluator/sandbox.py`](../evaluator/sandbox.py)):
+
+| Step | Runs as | Can read | Writes |
+|---|---|---|---|
+| expand the recipe | sandbox | its checkout, the models | `untrusted/ids.json` |
+| probe the new encoder | sandbox | same | `untrusted/probe*.npz` |
+| build the checkpoint | sandbox | same | `untrusted/checkpoint`, then **sealed** (moved to a root-only directory) |
+| regenerate the audit samples | sandbox | same, but **not** the sealed checkpoint | `untrusted/regen`, then sealed |
+| audit, quality, speed, tasks, holdout, ranking | evaluator, `main` code | everything | the artifact |
+
+- **Regeneration without the answer.** Before the regeneration step the built checkpoint is moved
+  out of the sandbox's reach. Which units are regenerated is chosen from the candidate id and the
+  evaluator's secret, so a submission cannot know them in advance or copy bytes out of its own
+  checkpoint. The trusted audit compares the regenerated tensors with the sealed checkpoint byte for
+  byte, and never imports the contributed quantizer: it knows it only by name and version.
+- **Allow-listed environment.** `env -i` with `HOME`, `PATH`, `LANG` and no GPU. The GitHub token,
+  holdout path and secrets are not passed. After every step every process the account owns is killed.
+- **Refuses an unsafe host.** Before any contributed code runs, the bot checks that the account
+  cannot read `secret.txt`, `state.json` or the token file, and cannot read or write the private
+  holdout, accepted results or the first-seen record. It must be able to read the models. Failing any
+  check labels the PR `bt:eval-error` and nothing runs.
+- **A contributed quantizer needs a new name.** Changing an existing quantizer's bytes under the same
+  name would make the trusted side run the old code; the audit fails such a PR.
+
+Set it up once, as root:
+
+```bash
+BT_EVAL_ROOT=/workspace/bt-eval BT_PRIVATE=/secure/holdout-epoch evaluator/setup_sandbox.sh
+```
+
 ## Maintainer controls
 
 | Label | Effect |
@@ -118,8 +151,9 @@ State is in `<root>/state.json`. Errors (`bt:eval-error`) are retried up to thre
 
 ## Known limits
 
-- **Contributed code runs in the evaluator's process space.** Until quantizer PRs run as an
-  unprivileged user without access to tokens, `eval-approved` is a real trust decision.
+- **The sandbox is an account, not a VM.** It shares the kernel and the network is not cut; add a
+  host firewall rule for `bt-sandbox` if the host can reach anything sensitive. `eval-approved` is
+  still a review, not a formality.
 - **Near-identical by accident.** Two miners may independently submit recipes within 2%. The later
   one is still measured and credited for what it adds, and one near-copy never triggers review.
 - **Sketches compare samples, not whole tensors.** 65,536 bytes per tensor at secret offsets is

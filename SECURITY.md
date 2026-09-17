@@ -18,6 +18,7 @@ contributions.
 | Measurement noise producing fake wins | two-run spreads with floors, paired bootstrap on RP-KL, ε-dominance |
 | Resubmitting known results | content-addressed candidate ids over the expanded recipe; duplicates of seeds, accepted results or earlier PRs are not measured |
 | Copying another miner's open PR | first-seen record per head commit; near-copies are ranked with the original on the frontier and earn only what they add ([guards](docs/guards.md)) |
+| Contributed code reading secrets or faking its audit | runs as an unprivileged account with an allow-listed environment; regenerates secret samples without access to its checkpoint; trusted code compares ([guards](docs/guards.md#isolation-contributed-code-produces-trusted-code-judges)) |
 | Renaming an existing encoder | quantizers are compared by output bytes on seeded probes and on the real checkpoint, not by source text |
 | Malicious code in PRs | manifest-only PRs run trusted `main` code; code PRs require a maintainer `eval-approved` label; evaluator paths are never auto-evaluated |
 

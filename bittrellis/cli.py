@@ -178,11 +178,60 @@ def cmd_build(args) -> int:
     return 0
 
 
+def _secret(args) -> str:
+    path = getattr(args, "sample_secret_file", None)
+    return Path(path).read_text().strip() if path else ""
+
+
+def _register_foreign(ckpt: Path) -> list[str]:
+    """Stub every quantizer the checkpoint's config names that this code base does not have (never executed)."""
+    from . import quantizers as Q
+
+    layers = json.loads((Path(ckpt) / "config.json").read_text()).get("quantization_config", {}).get("quantized_layers", {})
+    refs: dict[str, set[str]] = {}
+    for layer in layers.values():
+        ref = layer.get("quantizer")
+        if ref and ref.partition("@v")[0] not in Q.REGISTRY:
+            refs.setdefault(ref, set()).add("FP8" if layer["quant_algo"].startswith("FP8") else "NVFP4")
+    return [q.ref for q in Q.register_foreign({r: tuple(sorted(f)) for r, f in refs.items()})]
+
+
+def cmd_regenerate(args) -> int:
+    """Contributed-code side of an isolated audit: regenerate units from the sources only, never the checkpoint."""
+    from . import quantizers as Q
+    from .build import open_context
+    from .validate import regenerate
+
+    m = Manifest.load(args.manifest)
+    units = _units(args)
+    assignments = m.expand_assignments(units)
+    targets = {u for u in args.units.split(",") if u}
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    ctx, handles = open_context(assignments, _source_dirs(args), verify=False, log=print)
+    try:
+        for qname in sorted({assignments[u].quantizer for u in targets}):
+            qz = Q.get(qname)
+            if qz.lineage != "regenerable":
+                continue
+            mine = {u for u in targets if assignments[u].quantizer == qname}
+            for name, blob in regenerate(qz, units, assignments, ctx, mine).items():
+                (out / f"{name}.bin").write_bytes(blob)
+    finally:
+        for h in handles:
+            h.close()
+    print(f"regenerated {len(list(out.glob('*.bin')))} tensors for {len(targets)} units")
+    return 0
+
+
 def cmd_audit(args) -> int:
     from .validate import audit
 
+    if args.regenerated:
+        print("foreign quantizers (compared, not executed):", ", ".join(_register_foreign(Path(args.checkpoint))) or "none")
     m = Manifest.load(args.manifest or Path(args.checkpoint) / "precision_manifest.yaml")
-    res = audit(args.checkpoint, m, _source_dirs(args), check_bytes=not args.fast, verify_sources=not args.fast, log=print)
+    res = audit(args.checkpoint, m, _source_dirs(args), check_bytes=not args.fast, verify_sources=not args.fast, log=print,
+                sample_secret=_secret(args), regenerated_dir=Path(args.regenerated) if args.regenerated else None)
     if args.out:
         build_rec = Path(args.checkpoint) / "bittrellis_build.json"
         files = json.loads(build_rec.read_text())["files"] if build_rec.exists() else None
@@ -232,6 +281,7 @@ def _identity(args, track, ckpt: Path) -> dict | None:
         ref = track["external_references"][args.external]
         ident = {"id": args.external, "name": ref["name"], "kind": "external", "source": ref.get("source")}
     else:
+        _register_foreign(ckpt)
         m = Manifest.load(ckpt / "precision_manifest.yaml")
         units = Qwen38Arch.from_config(ckpt / "config.json").units()
         ident = {"id": m.candidate_id(units), "name": m.name, "kind": "internal", "manifest": m.to_dict(units),
@@ -243,7 +293,7 @@ def _identity(args, track, ckpt: Path) -> dict | None:
         if prior is not None and prior.get("fast") is False and prior.get("checkpoint_files") == files:
             audit_doc = prior  # audited earlier on exactly these shard bytes (pipelined maintainer runs)
         else:
-            res = audit(ckpt, m, _source_dirs(args), check_bytes=True, verify_sources=True, log=print)
+            res = audit(ckpt, m, _source_dirs(args), check_bytes=True, verify_sources=True, log=print, sample_secret=_secret(args))
             audit_doc = {**res.to_dict(), "candidate_id": ident["id"], "checkpoint_files": files}
         (out / "audit.json").write_text(json.dumps(audit_doc, indent=2) + "\n")
         ident["audit_ok"] = audit_doc["ok"]
@@ -435,6 +485,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--manifest")
     p.add_argument("--fast", action="store_true", help="skip byte and source hashing (development only)")
     p.add_argument("--out")
+    p.add_argument("--sample-secret-file", help="evaluator secret that makes the regenerated samples unpredictable")
+    p.add_argument("--regenerated", help="tensors contributed quantizers regenerated in isolation (compared, not executed)")
+    p = sp("regenerate", cmd_regenerate, "regenerate units from the sources only (the contributed-code side of an isolated audit)",
+           "base", "shipped", "unsloth")
+    p.add_argument("manifest")
+    p.add_argument("--units", required=True, help="comma-separated unit ids")
+    p.add_argument("--out", required=True)
     p = sp("corpus", cmd_corpus, "build or verify the public corpus")
     p.add_argument("action", choices=["build", "verify"])
     p.add_argument("--out", default=DEFAULTS["corpus"])
@@ -451,6 +508,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--out", required=True)
         p.add_argument("--external", help="evaluate an external reference (R1) instead of a candidate")
         p.add_argument("--audit-json", help="reuse a full audit of the same checkpoint files (from `bittrellis audit --out`)")
+        p.add_argument("--sample-secret-file", help="evaluator secret that makes the audit's regenerated samples unpredictable")
         if name == "evaluate":
             p.add_argument("--stages", default="quality,tasks,performance")
     p = sp("evaluate-llamacpp", cmd_evaluate_llamacpp, "external reference R2 through pinned llama.cpp", "llamacpp", "corpus", "reference")

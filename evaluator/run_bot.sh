@@ -3,6 +3,8 @@
 #   GITHUB_TOKEN   token with pull-request read, issues write (comments + labels)
 #   BT_EVAL_ROOT   evaluator state/artifacts (large: checkpoints are built here, then deleted)
 #   BT_PRIVATE     private holdout directory for the current epoch (never inside the repo)
+#   BT_SANDBOX_USER  account that runs contributed code (default bt-sandbox; evaluator/setup_sandbox.sh)
+#   BT_TOKEN_FILE  where the token is stored, checked to be unreadable by the sandbox
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${GITHUB_TOKEN:?set GITHUB_TOKEN}"

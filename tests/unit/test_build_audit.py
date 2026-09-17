@@ -200,7 +200,55 @@ def test_replay_cache_is_used_and_still_catches_tampering(tiny_all, tmp_path, tr
     first = run_audit(out, m, tiny_all)
     assert first.ok and first.lineage["rtn@v1"]["replay_cache_hits"] == 0
     second = run_audit(out, m, tiny_all)
-    assert second.ok and second.lineage["rtn@v1"]["replay_cache_hits"] > 0 and second.lineage["rtn@v1"]["replayed_linears"] == 0
+    assert second.ok and second.lineage["rtn@v1"]["replay_cache_hits"] > 0 and second.lineage["rtn@v1"]["replayed_tensors"] == 0
     corrupt(out, "model.language_model.layers.0.linear_attn.in_proj_qkv.weight", flip_one=True)
     third = run_audit(out, m, tiny_all)
     assert not third.ok
+
+
+def test_isolated_audit_compares_without_executing_contributed_code(tiny_all, tmp_path, track):
+    from bittrellis.build import open_context
+    from bittrellis.validate import regenerable_samples, regenerate
+
+    units = Qwen38Arch.from_config(tiny_all[1] / "config.json").units()
+    m = manifest(rules=[{"match": "L*.gdn.*", "format": "FP8", "quantizer": "toyseq"}])
+    out, regen = tmp_path / "seq", tmp_path / "regen"
+    Q.register(_ToySequential())
+    try:
+        build(m, track, sources(tiny_all), out, **QUIET)
+        assignments = m.expand_assignments(units)
+        cid = m.candidate_id(units)
+        targets = {u.id for u in regenerable_samples(units, assignments, "toyseq", f"{cid}:s3cret")}
+        ctx, handles = open_context(assignments, sources(tiny_all), False, lambda *_: None)
+        regen.mkdir()
+        for name, blob in regenerate(Q.get("toyseq"), units, assignments, ctx, targets).items():
+            (regen / f"{name}.bin").write_bytes(blob)
+        for h in handles:
+            h.close()
+    finally:
+        Q.REGISTRY.pop("toyseq", None)
+    # the judging process only knows the quantizer's name and version
+    Q.register_foreign({"toyseq@v1": (FP8,)})
+    try:
+        ok = run_audit(out, m, tiny_all, sample_secret="s3cret", regenerated_dir=regen)
+        assert ok.ok, ok.errors
+        assert ok.lineage["toyseq@v1"]["replay_mode"] == "isolated" and ok.lineage["toyseq@v1"]["tensors_compared"] > 0
+        # a different secret picks different samples: regenerations prepared for the old ones do not cover them
+        assert not run_audit(out, m, tiny_all, sample_secret="another", regenerated_dir=regen).ok
+        victim = sorted(regen.glob("*.weight.bin"))[0]
+        victim.write_bytes(bytes([victim.read_bytes()[0] ^ 1]) + victim.read_bytes()[1:])
+        bad = run_audit(out, m, tiny_all, sample_secret="s3cret", regenerated_dir=regen)
+        assert not bad.ok and "not produced by the declared quantizer" in bad.errors[0]
+        with pytest.raises(RuntimeError):
+            Q.get("toyseq").encode(None, None, None, FP8)
+    finally:
+        Q.REGISTRY.pop("toyseq", None)
+
+
+def test_candidate_hash_from_keys_matches_manifest(track):
+    from bittrellis.manifest import candidate_hash_keys
+
+    units = Qwen38Arch().units()
+    m = manifest(rules=[{"match": "L*.mlp", "layers": "0-55", "format": "NVFP4", "quantizer": "unsloth"}])
+    keys = {k: a.key() for k, a in m.expand_assignments(units).items()}
+    assert candidate_hash_keys(track.id, keys) == m.candidate_id(units)

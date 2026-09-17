@@ -15,6 +15,36 @@ REGISTRY: dict[str, Quantizer] = {q.name: q for q in _BUILTIN}
 DEFAULT_FOR_FORMAT = {"NVFP4": "baseline", "FP8": "rtn", "Q4_K": "runtime"}
 
 
+class Foreign(Quantizer):
+    """A contributed quantizer known only by its ref, in a process that must not execute its code.
+
+    The evaluator's trusted side uses it to compute candidate ids and to audit a checkpoint whose
+    samples the contributed code regenerated in isolation (see validate.audit, regenerated_dir).
+    """
+
+    lineage = "regenerable"
+    replay_mode = "independent"
+
+    def __init__(self, name: str, version: int, formats: tuple[str, ...]):
+        self.name, self.version, self.formats = name, version, formats
+
+    def encode(self, ctx, unit, lin, fmt):
+        raise RuntimeError(f"{self.ref} is contributed code; it runs only in the sandbox")
+
+
+def register_foreign(refs: dict[str, tuple[str, ...]]) -> list[Quantizer]:
+    """Register stubs for `{"name@vN": formats}` not already known. Returns the stubs added."""
+    added = []
+    for ref, formats in sorted(refs.items()):
+        name, _, v = ref.partition("@v")
+        if name in REGISTRY:
+            if REGISTRY[name].ref != ref:
+                raise ValueError(f"{ref}: this code base has {REGISTRY[name].ref}")
+            continue
+        added.append(register(Foreign(name, int(v), tuple(formats))))
+    return added
+
+
 def get(name: str) -> Quantizer:
     try:
         return REGISTRY[name]
@@ -34,4 +64,4 @@ def register(q: Quantizer) -> Quantizer:
     return q
 
 
-__all__ = ["REGISTRY", "DEFAULT_FOR_FORMAT", "Produced", "QuantContext", "Quantizer", "get", "register"]
+__all__ = ["REGISTRY", "DEFAULT_FOR_FORMAT", "Foreign", "Produced", "QuantContext", "Quantizer", "get", "register", "register_foreign"]

@@ -12,7 +12,7 @@ scored.
 | 5 | **Execution** | a unit does not load, or the pinned loader would execute a different format than the manifest selects (see [precision_space.md](precision_space.md)) |
 | 6 | **Lineage: runtime** | a Q4_K unit's stored BF16 is not byte-identical to the base |
 | 6 | **Lineage: attested** | a unit's bytes differ from the verified source |
-| 6 | **Lineage: regenerable** | a sampled unit's rebuild (in pipeline order for sequential quantizers) differs by one byte |
+| 6 | **Lineage: regenerable** | a sampled unit's rebuild (in pipeline order for sequential quantizers) differs by one byte. The evaluator picks samples with a secret, and a contributed quantizer's samples are regenerated in the sandbox without access to the checkpoint, then compared by trusted code ([guards.md](guards.md#isolation-contributed-code-produces-trusted-code-judges)) |
 | 7 | **Anomaly** | reconstruction error is more than 5× round-to-nearest (warning above 2×) |
 
 `audit.json` records every error, the executed format of each unit, the lineage outcome per
