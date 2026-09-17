@@ -515,7 +515,8 @@ class Evaluator:
             (art / "holdout.json").unlink(missing_ok=True)
             t0 = time.time()
             run(self.py + ["holdout", "check", str(ckpt), "--private", self.args.private, "--artifact", str(art),
-                           "--incumbent-artifact", str(incumbent), "--shipped", self.args.shipped, "--sparkinfer", self.args.sparkinfer], code, log)
+                           "--incumbent-artifact", str(incumbent), "--shipped", self.args.shipped, "--sparkinfer", self.args.sparkinfer],
+                REPO_ROOT, log)  # always trusted code: contributed code must never see the private holdout
             if not (art / "holdout.json").exists():  # a crash must never read as "no holdout failure"
                 raise RuntimeError("holdout check did not produce a verdict")
             timings = self._timings(art)
