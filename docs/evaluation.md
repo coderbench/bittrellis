@@ -1,98 +1,97 @@
 # Evaluation
 
-Every checkpoint goes through the same four steps, in the same order, on the same pinned RTX 5090.
+Every candidate goes through the same steps on the same pinned RTX 5090. The rules are in the
+[specification](specification.md); this page is the practical view.
 
 ```text
-  manifest ──build──▶ checkpoint ──audit──▶ ✓ ──score──▶ quality.json
-                                              ├─bench──▶ performance.json
-                                              └─tasks──▶ tasks.json
-                                                             │
-                                          gates ◀────────────┘
-                                            │
-                                            ▼
-                                  frontier · Frontier Gain
+manifest ─▶ validate + duplicates ─▶ build ─▶ audit ─▶ public RP-KL ─▶ task guard ─▶ 2 perf runs
+                                     (hash-verified)   + correctness                     │
+                                                      + needles                          ▼
+                                    PR comment ◀─ FG-2 ◀─ ε-frontier ◀─ gates ◀─ private holdout
 ```
 
-## 1. Audit (before any GPU time)
+## 1. Build and audit (CPU)
 
-`bittrellis audit` fails a checkpoint that is anything other than a precision transformation of the
-pinned weights. See [blueprint_review.md §9](blueprint_review.md#9-anti-gaming-needed-teeth)
-for the list of checks. A failed audit is never scored.
+`bittrellis build` verifies every source against `configs/sources.lock.json`, then writes the
+checkpoint deterministically. `bittrellis audit` rejects anything that is not a legal
+precision/quantizer transformation of the pinned weights; see [audit.md](audit.md).
 
-## 2. Quality: divergence from BF16
+## 2. Public fidelity: Reference-Partition KL
 
-**Metric.** Mean KL(P<sub>BF16</sub> ‖ Q<sub>candidate</sub>) in nats per token, over every scored position.
+- **Reference.** BF16 via transformers, computed once per corpus and epoch; top-256 ids and
+  log-probs per position, hash-pinned.
+- **Candidate.** [`tools/sparkinfer_refscore.cpp`](../tools/sparkinfer_refscore.cpp) links the
+  unmodified pinned runtime and teacher-forces the corpus through the decode path with
+  `SPARKINFER_DETERMINISTIC=1`. It returns the candidate's log-probs of exactly the reference's
+  256 ids per position. Long streams are prefilled to their tail with batched prefill first.
+- **Metric.** RP-KL, the KL between both distributions projected onto {BF16 top-256, tail}. It is
+  identical in partition for every candidate and never larger than full-vocabulary KL.
 
-**How it is measured**
-- **Candidate:** SparkInfer's `qwen3_gguf_score` teacher-forces the fixed corpus through the decode path, with `SPARKINFER_DETERMINISTIC=1`. Long streams are prefilled up to their tail with batched prefill, then scored token by token.
-- **Reference:** transformers BF16, computed once and hash-pinned (`bittrellis reference`).
-- **Estimator:** coarse-grained KL over the reference top-64 tokens plus one tail bucket. It can only under-estimate the true KL, never inflate it.
-
-| Field in `quality.json` | Meaning |
+| `quality.json` field | Meaning |
 |---|---|
-| `kl`, `kl_ci95` | mean KL, 95% block-bootstrap interval (blocks of 128 positions) |
-| `kl_p99` | 99th percentile, the tail |
+| `rp_kl`, `rp_kl_ci95`, `rp_kl_p99` | mean, block-bootstrap 95% interval, tail |
 | `top1` | argmax agreement with BF16 |
 | `nll_delta` | candidate NLL − BF16 NLL on the true next token |
+| `outside_mass_mean` | candidate probability outside the BF16 top-256 (diagnostic) |
 | `by_category` | general · math · code · tools · multilingual · long |
-| `needles`, `needle_recall` | vault codes at 10/50/90% depth of 8K/16K/32K contexts (a needle counts only if BF16 retrieves it) |
+| `needles_by_length` | long-context guard: needles retrieved / required at 8K, 16K, 32K |
 
-**Comparing two checkpoints.** A few positions in any text are chaotic: BF16 itself is
-uncertain there, and every 4-bit map disagrees with it differently. Those positions are shared
-by every candidate, so differences are computed **paired**: per-position ΔKL against the same
-positions of the other artifact (`kl_positions.npz`), with a paired block bootstrap
-(`bittrellis.eval.logits.paired_delta`). A change is significant when its interval excludes 0.
+**Comparing two artifacts** always uses per-position paired differences (`kl_positions.npz`), so
+position-level noise shared by every checkpoint cancels:
 
-## 3. Performance
+```bash
+bittrellis compare artifacts/V0-baseline-rebuild artifacts/mine
+```
 
-`qwen3_gguf_bench … sweep` in one process: contexts 128 / 4,096 / 16,384, **2 repetitions**,
-128 decode tokens, real prompt text (the 32K corpus stream), batch 1.
+`correctness.json` records the runtime-correctness checks and the effective scoring environment.
 
-| Field | Meaning |
+## 3. Task guard
+
+SparkInfer's `bench/quality` benchmark tier: its data, prompts and scorers for IFEval, GSM8K,
+MMLU-Pro, HumanEval and function calling, 196 items, greedy, thinking off. It runs through
+`sparkinfer_server`'s chat endpoint with Qwen3.8-sized token caps. A suite may not drop more than 6
+passed items below V0.
+
+## 4. Performance and memory: exactly two runs
+
+Each run is a fresh process: one model load, then a 128 / 4,096 / 16,384 context sweep with 512
+decode tokens. Nothing repeats inside a run.
+
+| `performance.json` field | Meaning |
 |---|---|
-| `decode_tps` | decode tok/s at 4,096 context: **official objective** |
-| `prefill_tps` | prefill tok/s at 4,096 context: reported |
-| `contexts` | full sweep |
-| `vram_gib` | **peak** device memory during the sweep (weights, 16K KV, prefill arena, CUDA context), minus idle usage, polled every 250 ms: **official objective** |
-| `vram_gib_after_load` | the bench's own reading right after load (reference only) |
+| `decode_tps`, `decode_spread` | mean of the two runs at 4K, relative spread between them |
+| `prefill_tps`, `prefill_spread` | same, for 4K prefill |
+| `peak_gpu_gib` | **official memory objective**: peak device memory during the run, minus idle usage |
+| `resident_after_load_gib` | the bench's reading right after load (reported) |
+| `peak_host_gib` | peak host RSS of the benchmark process (reported) |
+| `runs` | both runs, full sweeps |
 
-Benchmarks refuse to start on a card with more than 1 GiB already in use.
+Benchmarks refuse to start on a card that already has more than 1 GiB in use.
 
-## 4. Task guard
+## 5. Private holdout
 
-This stage reuses SparkInfer's `bench/quality` benchmark tier: its data, prompt builders and
-scorers for IFEval, GSM8K, MMLU-Pro, HumanEval and function calling (196 items, greedy, thinking
-off). The checkpoint is loaded once in `sparkinfer_server`.
-
-Two deliberate differences from `run_quality.py`, which predates Qwen3.8:
-
-- **Endpoint.** Requests go to `/v1/chat/completions`. `/v1/completions` returns the
-  end-of-turn token inside the text (`F<|im_end|>`), and the MMLU-Pro scorer then reads the
-  "D" of "END".
-- **Token caps.** Raised (GSM8K 1024, IFEval/HumanEval 768), because Qwen3.8 reasons step by
-  step and the original caps cut the final answer off.
-
-A candidate fails the guard if any suite drops more than 6 passed items below R0.
+Validators only; PASS or FAIL. See [holdout.md](holdout.md).
 
 ## Gates → frontier
 
-A result enters the frontier only if it passes **all** gates in `configs/hpc01.yaml`:
+All must hold:
 
 - audit;
-- KL ≤ 0.30;
-- top-1 ≥ 0.80;
-- needle recall = 1.0;
-- task guard.
+- runtime correctness;
+- RP-KL ≤ 0.30 and top-1 ≥ 0.80;
+- long-context guard (every BF16-retrievable needle at 8K/16K/32K);
+- task guard;
+- holdout PASS.
 
 Then see [frontier.md](frontier.md).
 
-## Reproducing a published number
+## Commands
 
 ```bash
-bittrellis evaluate <checkpoint> --out artifacts/<name>       # candidate
-bittrellis evaluate <checkpoint> --reference-id R0 --out ...  # reference point
-bittrellis evaluate-llamacpp --out artifacts/R2                # llama.cpp reference
-bittrellis frontier artifacts/*                                # gates, frontier, FG-2
+bittrellis evaluate <checkpoint> --out artifacts/<name>                   # everything
+bittrellis evaluate-public <checkpoint> --out artifacts/<name>            # audit + fidelity only
+bittrellis benchmark <checkpoint> --out artifacts/<name>                  # audit + performance only
+bittrellis evaluate <dir> --external R1 --out artifacts/R1                # external reference
+bittrellis evaluate-llamacpp --out artifacts/R2                           # llama.cpp reference
+bittrellis frontier --with-seeds artifacts/<name>                         # rank against the seeds
 ```
-
-Raw score dumps are kept in `scores/*.npz`, so quality can be recomputed without a GPU.

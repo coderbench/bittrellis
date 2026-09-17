@@ -1,93 +1,86 @@
-# Precision manifests
+# Manifests
 
-A manifest is the whole submission: a few lines of YAML that say which precision each part of
-the model runs at. BitTrellis turns it into a checkpoint, audits it, and measures it.
+A manifest is the whole submission: a few lines of YAML that say, for each part of the model, which
+format SparkInfer should execute and which quantizer produces its bytes. BitTrellis turns it into a
+checkpoint, audits it and measures it.
 
 ```yaml
-schema: bittrellis/precision-manifest@1
+schema: bittrellis/manifest@2
 track: HPC-01
-name: gdn-fp8-late-head-q4k           # lowercase, hyphenated; becomes the artifact name
+name: gdn-fp8-deep-calibrated-mlp       # lowercase, hyphenated; becomes the artifact name
 description: >
-  Protect the recurrent path where depth is largest; fit the head once from BF16.
+  Protect the deep recurrent layers with FP8 and use calibrated NVFP4 bytes for MLP 0-55.
 authors: [your-github-handle]
-default: NVFP4                        # every unit starts here (NVFP4 or Q4_K)
-rules:                                # applied top to bottom; later rules win
-  - match: "L*.gdn.*"                 # glob over unit ids
-    layers: "40-63"                   # optional layer filter: "a-b,c,d-e"
-    precision: FP8
+default: NVFP4                          # every unit starts here (NVFP4 or Q4_K)
+quantizers: {NVFP4: baseline}           # default quantizer per format (optional)
+rules:                                  # applied top to bottom; later rules win
+  - match: "L*.gdn.*"                   # glob over unit ids
+    layers: "32-63"                     # optional layer filter: "a-b,c,d-e"
+    format: FP8
   - match: "L*.mlp"
-    layers: "0-7"
-    precision: Q4_K
-modules:                              # exact unit overrides, applied last
+    layers: "0-55"
+    format: NVFP4
+    quantizer: unsloth                  # optional per-rule quantizer
+modules:                                # exact unit overrides, applied last
   lm_head: Q4_K
-quantizers:                           # how stored bytes are produced
-  NVFP4: baseline                     # baseline | rtn
-  FP8: rtn
+  L3.attn.o: {format: NVFP4, quantizer: rtn, params: {}}
 ```
+
+The older `bittrellis/precision-manifest@1` schema (key `precision`) is still read.
 
 ## Unit ids
 
 ```text
-L0.gdn.qkv   L0.gdn.z   L0.gdn.out   L0.mlp        ← layers 0,1,2 · 4,5,6 · …  (Gated DeltaNet)
-L3.attn.q    L3.attn.k  L3.attn.v    L3.attn.o   L3.mlp   ← layers 3,7,…,63  (full attention)
+L0.gdn.qkv   L0.gdn.z   L0.gdn.out   L0.mlp            layers 0,1,2 · 4,5,6 · …  (Gated DeltaNet)
+L3.attn.q    L3.attn.k  L3.attn.v    L3.attn.o   L3.mlp   layers 3,7,…,63       (full attention)
 lm_head
 ```
 
-`bittrellis inventory --out module_inventory.json` lists all 273 units, with shapes, parameter
-counts, legal precisions and bytes per precision.
+`bittrellis inventory --out module_inventory.json` lists all 273 units with their shapes, legal
+assignments, executed formats, lineage and loader constraints.
 
-## Legal precisions
+## Legal assignments
 
-| kind | NVFP4 | FP8 | Q4_K |
+| Unit kind | NVFP4 | FP8 | Q4_K |
 |---|:-:|:-:|:-:|
 | `gdn.*` | ✓ | ✓ | ✓ |
 | `attn.*` | ✓ | | ✓ |
 | `mlp` | ✓ | | ✓ |
-| `lm_head` | ✓ | | ✓ |
+| `lm_head` | ✓ (executes Q4_K(nvfp4) at batch 1) | | ✓ |
 
-Anything else is rejected with the reason; see [precision_space.md](precision_space.md) for why.
+| Quantizer | Formats | Lineage | Notes |
+|---|---|---|---|
+| `baseline` | NVFP4 | attested | the shipped bytes (default for NVFP4) |
+| `unsloth` | NVFP4 | attested | calibrated bytes, MLP layers 0–55 only |
+| `rtn` | NVFP4, FP8 | regenerable | round-to-nearest from BF16 (default for FP8) |
+| `runtime` | Q4_K | runtime | the only Q4_K quantizer: SparkInfer fits Q4_K at load |
 
-## Quantizers
+Anything else is rejected with a reason: FP8 outside GDN, a quantizer on a format it can't produce,
+a Q4_K "quantizer", an attested source that lacks bytes for a unit, or an unknown unit or quantizer.
+Adding quantizers: [quantizer_contract.md](quantizer_contract.md).
 
-| Precision | Stored bytes | Quantizer options |
-|---|---|---|
-| NVFP4 | ModelOpt `.weight` U8 + UE4M3 block scales + F32 tensor scale (or the compressed-tensors layout for `unsloth`) | `baseline`: the shipped R0 bytes · `rtn`: round-to-nearest from BF16 · `unsloth`: the pinned R1 checkpoint's calibrated bytes (MLP layers 0–55 only) |
-| FP8 | E4M3 weight + one BF16 scale per output row | `rtn` |
-| Q4_K | BF16, byte-identical to the base model | none: SparkInfer fits Q4_K at load |
+## Expansion and identity
 
-A rule or module override can pick its own quantizer:
+A manifest *expands* to one assignment per unit. The expanded form is stored in the built checkpoint
+(`precision_manifest.yaml`) and in `candidate.json`:
 
 ```yaml
-rules:
-  - match: "L*.mlp"
-    layers: "0-55"
-    precision: NVFP4
-    quantizer: unsloth
-modules:
-  L3.attn.o: {precision: NVFP4, quantizer: rtn}
+L40.gdn.z: {source_format: FP8, quantizer: rtn@v1, params: {}, execution: {decode_b1: FP8, packed_wide: FP8}}
+lm_head:   {source_format: NVFP4, quantizer: baseline@v1, params: {},
+            execution: {decode_b1: Q4_K(nvfp4), packed_wide: "NVFP4 if free VRAM at load > payload + 3 GiB, else Q4_K(nvfp4)"}}
 ```
 
-A manifest never carries bytes. It can only name quantizers implemented in `bittrellis/build.py`
-or pinned checkpoints listed under `model.quantizer_sources` in the track, so the evaluator
-regenerates every byte itself.
-
-New quantizers (for example GPTQ-style error feedback or scale search) are welcome as PRs. Whatever
-they produce must still pass the audit's fidelity bound: on sampled rows, reconstruction error at
-most 2× round-to-nearest plus 0.01 (calibrated encoders measure 1.2–1.6×; substituted bytes > 5×).
-
-## Identity
-
-A candidate's id is the first 16 hex characters of a SHA-256 over the track and the fully
-**expanded** map: every unit's `precision@quantizer`.
-
-Different rule spellings that expand to the same map are the same candidate.
+The **candidate id** is the first 16 hex characters of a SHA-256 over the track and every unit's
+`FORMAT@quantizer@vN[+params]`. Different rule spellings that expand identically are the same
+candidate. A quantizer version bump changes the id of every candidate that uses it.
 
 ## Commands
 
 ```bash
-bittrellis manifest my.yaml               # validate, print the per-kind summary and the id
-bittrellis manifest my.yaml --expand      # print the full unit → precision map
-bittrellis build my.yaml                  # CPU-only: writes models/candidates/<name>-<id>/
-bittrellis audit models/candidates/...    # the checks validators run before scoring
-bittrellis describe <any checkpoint dir>  # what SparkInfer executes for any Qwen3.8 checkpoint
+bittrellis manifest my.yaml                               # validate, per-kind summary, id
+bittrellis manifest my.yaml --expand                      # full per-unit assignment
+bittrellis manifest my.yaml --against manifests/          # flag duplicates and near-duplicates
+bittrellis build my.yaml --out models/candidates/mine     # CPU only, sources hash-verified
+bittrellis audit models/candidates/mine                   # what validators check before scoring
+bittrellis search neighbors my.yaml --out proposals/      # every legal one-group change
 ```

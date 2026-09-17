@@ -1,5 +1,10 @@
 # Blueprint review: what changed and why
 
+> Historical record of the first review. The authoritative rules are now
+> [specification.md](specification.md) (v2.1), which also incorporates the second review:
+> Reference-Partition KL, lineage classes, an internal frontier seeded with V0, a private holdout,
+> and two performance runs with a 512-token decode window.
+
 BitTrellis started from a design blueprint (Qwen3.8-27B × RTX 5090 × SparkInfer; search
 BF16/FP8/NVFP4 per module; feasibility first). The intent holds. Several factual premises did
 not survive contact with the pinned runtime, the published checkpoints, or measurement noise.
@@ -139,7 +144,8 @@ Frontier Gain is versioned FG-2.
 
 **Measured:** unsloth's checkpoint beat BitTrellis's GDN-FP8 map on KL with the same GDN
 precision, because its NVFP4 MLP bytes are calibrated (GPTQ-style `actorder`). Splicing those
-bytes into the shipped map (V13) cuts KL by 12% at identical speed and memory. No
+bytes into the shipped map (V13) cut KL by 12% at near-identical cost in epoch e1 (e2 re-measured
+11.5% at −4.4% prefill). No
 precision-only change did that.
 
 **Fix:** a manifest assigns `precision@quantizer` per unit. Quantizers are either implemented in the

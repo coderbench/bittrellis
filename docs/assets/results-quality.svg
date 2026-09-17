@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="498" viewBox="0 0 1100 498" font-family="Inter,Segoe UI,Helvetica,Arial,sans-serif">
+<rect width="100%" height="100%" rx="16" fill="#0b1020"/>
+<text x="24" y="36" fill="#e5e7eb" font-size="19" font-weight="700">How far does each checkpoint drift from the original model?</text>
+<text x="24" y="60" fill="#94a3b8" font-size="12">Reference-Partition KL vs BF16 on 21,624 scored tokens · shorter bar = answers closer to the original · measured on one RTX 5090</text>
+<text x="288" y="102" fill="#94a3b8" font-size="13" text-anchor="end">llama.cpp best GGUF (external)</text>
+<rect x="300" y="86" width="282.5" height="22" rx="4" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3" opacity="1"/>
+<text x="592.5041908315013" y="102" fill="#22c55e" font-size="12" font-weight="600">0.064 · 53% closer</text>
+<text x="288" y="134" fill="#94a3b8" font-size="13" text-anchor="end">unsloth checkpoint (external)</text>
+<rect x="300" y="118" width="388.8" height="22" rx="4" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3" opacity="1"/>
+<text x="698.8071999960683" y="134" fill="#22c55e" font-size="12" font-weight="600">0.088 · 35% closer</text>
+<text x="288" y="166" fill="#e5e7eb" font-size="13" text-anchor="end">V3 · recurrent path FP8</text>
+<rect x="300" y="150" width="499.0" height="22" rx="4" fill="#3b82f6" stroke="none" stroke-width="1.5" stroke-dasharray="0" opacity="1"/>
+<text x="809.024199384349" y="166" fill="#22c55e" font-size="12" font-weight="600">0.113 · 17% closer</text>
+<text x="288" y="198" fill="#e5e7eb" font-size="13" text-anchor="end">V13 · calibrated MLP encoder</text>
+<rect x="300" y="182" width="531.7" height="22" rx="4" fill="#a855f7" stroke="none" stroke-width="1.5" stroke-dasharray="0" opacity="1"/>
+<text x="841.674792911201" y="198" fill="#22c55e" font-size="12" font-weight="600">0.120 · 11% closer</text>
+<text x="288" y="230" fill="#e5e7eb" font-size="13" text-anchor="end">V1 · everything Q4_K</text>
+<rect x="300" y="214" width="549.5" height="22" rx="4" fill="#a855f7" stroke="none" stroke-width="1.5" stroke-dasharray="0" opacity="1"/>
+<text x="859.5364294721206" y="230" fill="#22c55e" font-size="12" font-weight="600">0.124 · 9% closer</text>
+<text x="288" y="262" fill="#e5e7eb" font-size="13" text-anchor="end">V9 · recurrent + MLP Q4_K</text>
+<rect x="300" y="246" width="565.2" height="22" rx="4" fill="#3b82f6" stroke="none" stroke-width="1.5" stroke-dasharray="0" opacity="1"/>
+<text x="875.1873832784405" y="262" fill="#22c55e" font-size="12" font-weight="600">0.128 · 6% closer</text>
+<text x="288" y="294" fill="#e5e7eb" font-size="13" text-anchor="end">V7 · early MLP Q4_K</text>
+<rect x="300" y="278" width="568.4" height="22" rx="4" fill="#3b82f6" stroke="none" stroke-width="1.5" stroke-dasharray="0" opacity="1"/>
+<text x="878.4324358649731" y="294" fill="#22c55e" font-size="12" font-weight="600">0.128 · 5% closer</text>
+<text x="288" y="326" fill="#e5e7eb" font-size="13" text-anchor="end">V6 · MLP Q4_K</text>
+<rect x="300" y="310" width="595.7" height="22" rx="4" fill="#a855f7" stroke="none" stroke-width="1.5" stroke-dasharray="0" opacity="1"/>
+<text x="905.720562968404" y="326" fill="#94a3b8" font-size="12" font-weight="600">0.135 · 1% closer</text>
+<text x="288" y="358" fill="#e5e7eb" font-size="13" text-anchor="end">V5 · attention Q4_K</text>
+<rect x="300" y="342" width="600.2" height="22" rx="4" fill="#a855f7" stroke="none" stroke-width="1.5" stroke-dasharray="0" opacity="1"/>
+<text x="910.1880832996244" y="358" fill="#94a3b8" font-size="12" font-weight="600">0.136 · 0% closer</text>
+<text x="288" y="390" fill="#e5e7eb" font-size="13" text-anchor="end">V0 · today's shipped checkpoint</text>
+<rect x="300" y="374" width="600.7" height="22" rx="4" fill="#64748b" stroke="none" stroke-width="1.5" stroke-dasharray="0" opacity="1"/>
+<text x="910.7201291977104" y="390" fill="#94a3b8" font-size="12" font-weight="600">0.136 · today</text>
+<text x="288" y="422" fill="#e5e7eb" font-size="13" text-anchor="end">V4 · recurrent path Q4_K</text>
+<rect x="300" y="406" width="630.0" height="22" rx="4" fill="#a855f7" stroke="none" stroke-width="1.5" stroke-dasharray="0" opacity="1"/>
+<text x="940.0" y="422" fill="#f87171" font-size="12" font-weight="600">0.142 · 5% further</text>
+<rect x="24" y="466" width="14" height="12" rx="2" fill="#a855f7" stroke="none" stroke-dasharray="3 2"/>
+<text x="44" y="476" fill="#94a3b8" font-size="12">on the frontier</text>
+<rect x="170" y="466" width="14" height="12" rx="2" fill="#3b82f6" stroke="none" stroke-dasharray="3 2"/>
+<text x="190" y="476" fill="#94a3b8" font-size="12">measured seed</text>
+<rect x="310" y="466" width="14" height="12" rx="2" fill="#64748b" stroke="none" stroke-dasharray="3 2"/>
+<text x="330" y="476" fill="#94a3b8" font-size="12">today's checkpoint</text>
+<rect x="470" y="466" width="14" height="12" rx="2" fill="none" stroke="#94a3b8" stroke-dasharray="3 2"/>
+<text x="490" y="476" fill="#94a3b8" font-size="12">external reference, not ranked</text>
+</svg>

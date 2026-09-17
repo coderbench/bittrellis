@@ -20,32 +20,41 @@ Everything is pinned in [`configs/hpc01.yaml`](../configs/hpc01.yaml):
 
 ```text
 0. lock      pins · SparkInfer build · models · corpus hash · BF16 reference hash
-1. baseline  R0 through the full harness, plus a determinism check (score twice, compare bytes)
+1. baseline  V0 (shipped checkpoint rebuilt) through the full harness, plus a determinism check
 2. variants  V0–V9 built from manifests, audited, scored, benchmarked
 3. refs      R1 unsloth mixed NVFP4/FP8 · R2 llama.cpp UD-Q4_K_M
 4. decide    frontier + answers A–G below → STRONG PASS / PASS / BORDERLINE / FAIL
 ```
 
-## Measurements per checkpoint
+## Measurements per checkpoint (evaluator epoch hpc01-e2)
 
 | What | How | Repeats |
 |---|---|---|
-| KL(BF16 ‖ candidate), top-1, ΔNLL | `qwen3_gguf_score`, teacher-forced, `SPARKINFER_DETERMINISTIC=1`, 5 × 4K category streams + 8K/16K/32K tails | 1 (bit-deterministic) |
-| Needle recall at 8K/16K/32K | argmax on the digits of three codes planted at 10/50/90% depth | same run |
-| Decode / prefill tok/s at 128, 4K, 16K | `qwen3_gguf_bench` sweep, real-text prompt ids | **2** (lower median) |
-| VRAM | bench `VRAM used` after load at 16K max context, on an idle card | same run |
+| RP-KL vs BF16, top-1, ΔNLL, outside mass | `tools/sparkinfer_refscore.cpp` on the unmodified pinned runtime, teacher-forced, `SPARKINFER_DETERMINISTIC=1`, fixed BF16 top-256 + tail partition; 5 × 4K category streams + 8K/16K/32K tails | 1 (bit-deterministic) |
+| Long-context guard | argmax on every digit of three codes planted at 10/50/90% depth of 8K/16K/32K contexts | same run |
+| Decode / prefill at 128, 4K, 16K | `qwen3_gguf_bench` sweep, real prompt text, 512 decode tokens | **2 independent processes** |
+| Peak GPU memory, resident after load, peak host RAM | polled during both runs on an idle card | same runs |
 | Task guard | SparkInfer `bench/quality` benchmark tier (196 items) via `sparkinfer_server` | 1 (greedy) |
-| Checkpoint audit | `bittrellis audit` (bytes, tensor set, fidelity, loader resolution) | 1 |
+| Checkpoint audit | sources hash-verified, lineage replayed | 1 |
 
 **Uncertainty.**
-- **Quality:** a 95% block-bootstrap interval over positions (block = 128 tokens). Scoring is deterministic, so run-to-run noise is zero by construction; step 1 verifies that.
-- **Speed:** the spread of the two repetitions. A speed difference counts only if it exceeds 2% *and* both of the candidate's reps beat both of the reference's.
+- **Fidelity:** paired block bootstrap over positions against the incumbent V0 (block = 128). Scoring
+  is deterministic, and the incumbent re-score is checked byte for byte.
+- **Speed:** a difference counts only beyond max(floor, either result's two-run spread). Floors are
+  1% for decode and 3% for prefill.
+
+Epoch `hpc01-e1`, the first pass, used a top-64 estimate from SparkInfer's own score tool and
+single-process sweeps. Its conclusions were re-measured under e2, and the committed seed artifacts
+are e2.
 
 ## Variants
 
+All variants are expressed as `bittrellis/manifest@2`. V0 is the internal incumbent: the shipped
+checkpoint rebuilt byte for byte.
+
 | ID | Map | Hypothesis under test |
 |---|---|---|
-| V0 | NVFP4 everywhere, baseline bytes | builder is exact: reproduces R0 tensor for tensor |
+| V0 | NVFP4 everywhere, baseline bytes | builder is exact: reproduces the shipped checkpoint tensor for tensor |
 | V1 | Q4_K everywhere | the other uniform 4.5-bit corner; Q4_K decode kernels vs NVFP4 |
 | V2 | lm_head stored BF16 | the baseline quantizes the head twice (→NVFP4→Q4_K); one fit is better, and costs no speed |
 | V3 | GDN FP8 | spending 8 bits on the recurrent path buys long-context quality |
@@ -65,16 +74,16 @@ They are labelled as post-hoc, and the verdict rule below was not changed.
 |---|---|---|
 | V10 / V11 | GDN FP8 in layers 32–63 / 0–31 | Which depth carries V3's gain, at what share of its cost? |
 | V12 | GDN FP8 on `qkv` only | Is the state-writing projection enough? |
-| V13 | R0's map with unsloth's calibrated NVFP4 bytes for MLP 0–55 | How much of R1's quality comes from the quantizer rather than the topology? |
+| V13 | V0's map with unsloth's calibrated NVFP4 bytes for MLP 0–55 | How much of R1's quality comes from the quantizer rather than the topology? |
 
 ## Decision questions
 
 | | Question | YES if |
 |---|---|---|
-| A | Is the baseline reproducible? | two score runs are byte-identical and V0 reproduces R0's tensors |
-| B | Do maps change quality meaningfully? | some variants' KL 95% intervals do not overlap R0's |
-| C | Do maps change real speed? | some variant's decode or prefill differs from R0 by > 2%, both reps agreeing |
-| D | Does a mixed map beat the baseline frontier? | some non-uniform variant is valid and not dominated by R0 |
+| A | Is the baseline reproducible? | two score runs are byte-identical and V0 reproduces the shipped checkpoint's tensors |
+| B | Do maps change quality meaningfully? | some variants' RP-KL differs from V0 with a paired 95% interval excluding 0 |
+| C | Do maps change real speed? | some variant's decode or prefill or peak memory differs from V0 beyond ε |
+| D | Does a mixed map beat the baseline frontier? | some non-uniform variant is valid and not dominated by V0 |
 | E | Are GDN / attention / MLP sensitivities different? | ΔKL per billion weights differs across V4/V5/V6 by more than their intervals |
 | F | Do interactions matter? | ΔKL(V9) is outside ΔKL(V4) + ΔKL(V6) ± the combined intervals |
 | G | Is automated search justified? | see verdict rule |
@@ -83,7 +92,7 @@ They are labelled as post-hoc, and the verdict rule below was not changed.
 
 - **STRONG PASS:** D is yes, and one valid mixed map either improves one objective by ≥ 5% at statistically equivalent KL, or improves KL by ≥ 10% at ≤ 2% speed and VRAM cost. B and C are also yes.
 - **PASS:** D is yes, with smaller margins, and B and C are yes.
-- **BORDERLINE:** B or C is yes, but no mixed map escapes R0's dominance.
+- **BORDERLINE:** B or C is yes, but no mixed map escapes V0's dominance.
 - **FAIL:** neither B nor C, or the toolchain cannot express module-level maps.
 
 Raw artifacts land in `artifacts/feasibility/<id>/`. `bittrellis report` writes

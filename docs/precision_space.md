@@ -28,12 +28,28 @@ Fitting it from BF16 is lossless in the source; fitting it from FP8 or NVFP4 qua
 
 ## The space BitTrellis searches
 
-| Unit kind | Units | Legal precisions | Stored as |
-|---|---:|---|---|
-| `L{i}.gdn.qkv`, `.z`, `.out` | 144 (48 layers) | `NVFP4` · `FP8` · `Q4_K` | NVFP4 · FP8 per-row · BF16 |
-| `L{i}.attn.q`, `.k`, `.v`, `.o` | 64 (16 layers) | `NVFP4` · `Q4_K` | NVFP4 · BF16 |
-| `L{i}.mlp` (gate+up+down) | 64 | `NVFP4` · `Q4_K` | NVFP4 · BF16 |
-| `lm_head` | 1 | `NVFP4` · `Q4_K` | NVFP4 · BF16 |
+| Unit kind | Units | Legal formats | Stored as | Executed (batch-1 decode) |
+|---|---:|---|---|---|
+| `L{i}.gdn.qkv`, `.z`, `.out` | 144 (48 layers) | `NVFP4` · `FP8` · `Q4_K` | NVFP4 · FP8 per-row · BF16 | as selected |
+| `L{i}.attn.q`, `.k`, `.v`, `.o` | 64 (16 layers) | `NVFP4` · `Q4_K` | NVFP4 · BF16 | as selected |
+| `L{i}.mlp` (gate+up+down) | 64 | `NVFP4` · `Q4_K` | NVFP4 · BF16 | as selected |
+| `lm_head` | 1 | `NVFP4` · `Q4_K` | NVFP4 · BF16 | **Q4_K(nvfp4)** or Q4_K |
+
+### The lm_head has conditional execution
+
+The head is the one unit whose stored format is not what batch-1 decode runs:
+
+- **batch-1 decode** always executes a Q4_K fit of the stored head: `Q4_K(nvfp4)` for a stored NVFP4
+  head, `Q4_K` for a stored BF16 head;
+- **wide packed decode** additionally uses the stored NVFP4 bytes as a block-scaled GEMM operand, but
+  only when free VRAM at load exceeds the payload plus a 3 GiB reserve.
+
+Manifests select the head's *stored* format (`NVFP4` or `Q4_K`). The expanded manifest records both
+execution paths explicitly, so the label never claims NVFP4 runs at batch 1.
+
+Q4_K is always a runtime fit: its quantizer is `runtime` and no Q4_K encoder choice exists. For every
+unit except the head the fit comes from the frozen BF16 tensor; for the head it comes from its stored
+representation (BF16, or the shipped NVFP4 bytes as in V0).
 
 **273 units**, roughly `3^144 · 2^129` maps. Full-attention layers are 3, 7, 11, …, 63
 (`(i + 1) % 4 == 0`); the other 48 are Gated DeltaNet.
@@ -75,7 +91,7 @@ whether those choices move the real frontier. It does not assume they do.
 
 | Build | GDN | Attention | MLP | lm_head (batch 1) | Loads? |
 |---|---|---|---|---|---|
-| gittensor (R0) | NVFP4 | NVFP4 | NVFP4 | Q4_K(nvfp4) | yes |
+| gittensor, shipped (V0) | NVFP4 | NVFP4 | NVFP4 | Q4_K(nvfp4) | yes |
 | unsloth (R1) | FP8 | **Q4_K(fp8)** | NVFP4 ×56, **Q4_K(fp8)** ×8 | Q4_K(fp8) | yes |
 | NVIDIA (R3) | per-tensor FP8 | per-tensor FP8 | NVFP4 | NVFP4 | **no** |
 
