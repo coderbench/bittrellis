@@ -125,7 +125,6 @@
 <rect x="1065.0" y="324" width="12.2" height="12" rx="2" fill="#1a7f37"/>
 <line class="gpu" x1="1065.0" y1="320" x2="1065.0" y2="340" stroke-width="1"/>
 <text x="1135.0" y="335.0" fill="#1a7f37" font-size="12" font-weight="600" text-anchor="start">−1.2 GB</text>
-<text x="40.0" y="371.0" class="t" font-size="14" font-weight="600" text-anchor="start">★</text>
 <text x="60.0" y="371.0" class="t" font-size="14" font-weight="600" text-anchor="start">V5</text>
 <text x="106.0" y="371.0" class="m" font-size="13" font-weight="400" text-anchor="start">attention Q4_K</text>
 <rect class="track" x="373.0" y="360" width="124" height="12" rx="2"/>

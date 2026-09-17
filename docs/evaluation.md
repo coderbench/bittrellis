@@ -44,9 +44,19 @@ Paired per-position comparison (`kl_positions.npz`) cancels shared noise:
 
 ## 3. Task guard
 
-SparkInfer's `bench/quality` benchmark tier (data, prompts, scorers): IFEval, GSM8K, MMLU-Pro,
-HumanEval, function calling. 196 items, greedy, thinking off, via `sparkinfer_server`'s chat endpoint
-with Qwen3.8-sized token caps. No suite may drop more than 6 passed items below V0.
+All **784** questions of SparkInfer's `bench/quality` set (IFEval 34, GSM8K 132, MMLU-Pro 298,
+HumanEval 20, BFCL function calling 300), greedy, thinking off, via `sparkinfer_server`'s chat endpoint
+with Qwen3.8-sized token caps. `tasks.json` keeps every question's pass/fail.
+
+The guard compares the candidate with V0 **question by question** and fails when:
+
+| Check | Fails if |
+|---|---|
+| overall | losses significantly exceed gains: exact one-sided McNemar p < 0.05 |
+| each suite | the same test at p < 0.01 |
+| each suite | it keeps fewer than half of the questions V0 passes |
+
+Tasks are a guard, not the score: RP-KL measures fidelity to the original model, not accuracy.
 
 ## 4. Performance and memory: exactly two runs
 

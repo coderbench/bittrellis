@@ -92,18 +92,20 @@ mainly a speed project** — it is about keeping quality while fitting the hardw
 The **frontier** is the set of checkpoints nothing else beats on every measure at once. New results
 earn only by pushing it forward.
 
-| | Checkpoint | Drift ↓ | Generation tok/s ↑ | 4K prompt tok/s ↑ | Peak GPU GiB ↓ |
-|---|---|---:|---:|---:|---:|
-| ★ | **V13** calibrated MLP encoder | **0.120** (−11.5%) | 94.4 | 14,110 | 22.0 |
-| ★ | V1 everything Q4_K | 0.124 | 94.8 | 7,537 | **20.3** |
-| ★ | V6 MLP Q4_K | 0.135 | 94.4 | 8,358 | 20.8 |
-| ★ | V5 attention Q4_K | 0.136 | 94.6 | 13,571 | 21.9 |
-| ★ | **V0** today's shipped checkpoint | 0.136 | **94.9** | **14,760** | 22.0 |
-| ★ | V4 recurrent path Q4_K | 0.142 | 94.9 | 12,011 | 21.6 |
-| | V3 recurrent path FP8 | 0.113 | 83.0 | 11,848 | 23.9 |
+| | Checkpoint | Drift ↓ | Tasks passed ↑ | Generation tok/s ↑ | 4K prompt tok/s ↑ | Peak GPU GiB ↓ |
+|---|---|---:|---:|---:|---:|---:|
+| ★ | **V13** calibrated MLP encoder | **0.120** (−11.5%) | 566/784 | 94.4 | 14,110 | 22.0 |
+| ★ | V1 everything Q4_K | 0.124 | **575/784** | 94.8 | 7,537 | **20.3** |
+| ★ | V6 MLP Q4_K | 0.135 | 563/784 | 94.4 | 8,358 | 20.8 |
+| ★ | **V0** today's shipped checkpoint | 0.136 | 570/784 | **94.9** | **14,760** | 22.0 |
+| ★ | V4 recurrent path Q4_K | 0.142 | 566/784 | 94.9 | 12,011 | 21.6 |
+| | V3 recurrent path FP8 | 0.113 | 573/784 | 83.0 | 11,848 | 23.9 |
+| | V5 attention Q4_K | 0.136 | 556/784 | 94.6 | 13,571 | 21.9 |
 
-Drift is Reference-Partition KL against the BF16 original; Δ is paired against V0 with a 95% interval
-that excludes zero. Every row passes every gate. V3, V7 and V9 are beaten by a frontier point.
+Drift is Reference-Partition KL against the BF16 original: how far the model's next-token predictions
+move, not task accuracy. Δ is paired against V0 with a 95% interval that excludes zero. V3, V7 and V9
+are beaten by a frontier point. V5 fails the task guard (it loses 33 of V0's answers and gains 19), so
+it cannot be credited.
 
 **Comparison targets.** Just as llama.cpp is SparkInfer's yardstick, BitTrellis measures outside
 checkpoints on the same GPU, corpus and metric. They show what is possible but are never ranked:
@@ -136,16 +138,16 @@ You don't rewrite the inference engine. You submit a better model for it — and
 3. **Open a PR.** The [evaluator bot](evaluator/pr_bot.py) screens it, measures it, and comments with the score.
 4. **Get a tier** — the only thing Gittensor pays, when a maintainer merges the PR:
 
-| Tier | Frontier space added (FG-2) | Proposed multiplier |
+| Tier | Frontier space added beyond noise (FG-2) | Proposed multiplier |
 |---|---|---:|
-| ![eval:XL](https://img.shields.io/badge/eval%3AXL-0e8a16?style=flat-square) | ≥ 0.60% | ×4.0 |
-| ![eval:L](https://img.shields.io/badge/eval%3AL-2da44e?style=flat-square) | ≥ 0.30% | ×2.5 |
-| ![eval:M](https://img.shields.io/badge/eval%3AM-4ac26b?style=flat-square) | ≥ 0.15% | ×1.5 |
-| ![eval:S](https://img.shields.io/badge/eval%3AS-8ddb8c?style=flat-square) | ≥ 0.07% | ×1.0 |
-| ![eval:XS](https://img.shields.io/badge/eval%3AXS-c6efce?style=flat-square) | > 0, beyond noise | ×0.5 |
+| ![eval:XL](https://img.shields.io/badge/eval%3AXL-0e8a16?style=flat-square) | ≥ 0.50% | ×4.0 |
+| ![eval:L](https://img.shields.io/badge/eval%3AL-2da44e?style=flat-square) | ≥ 0.25% | ×2.5 |
+| ![eval:M](https://img.shields.io/badge/eval%3AM-4ac26b?style=flat-square) | ≥ 0.12% | ×1.5 |
+| ![eval:S](https://img.shields.io/badge/eval%3AS-8ddb8c?style=flat-square) | ≥ 0.035% | ×1.0 |
+| ![eval:XS](https://img.shields.io/badge/eval%3AXS-c6efce?style=flat-square) | ≥ 0.005% | ×0.5 |
 | ![eval:none](https://img.shields.io/badge/eval%3Anone-bfc5cc?style=flat-square) ![eval:REJECT](https://img.shields.io/badge/eval%3AREJECT-b60205?style=flat-square) | nothing new, or failed | ×0 |
 
-For scale: today's best move, V13, would be `eval:L`. Duplicates earn nothing, and a near-copy of
+For scale: today's best move, V13, would be `eval:L`. A tier also needs a private holdout PASS. Duplicates earn nothing, and a near-copy of
 an earlier PR earns only what it adds.
 
 **Start here:** [Miner guide](docs/miner_guide.md) · [Rewards](docs/rewards.md) · [Guards](docs/guards.md)

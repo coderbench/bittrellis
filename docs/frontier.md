@@ -25,13 +25,21 @@ memory at equal fidelity and decode by giving up 20–50% of prefill: free on th
 
 ## FG-2
 
-The share of normalized 4-D space a result adds. Map valid internal rows into the unit box (1 = best
-edge per axis); HV is the dominated hypervolume, the union of boxes `[0, point]`:
+The share of normalized 4-D space a result adds **beyond noise**. Map valid internal rows into the unit
+box (1 = best edge per axis); HV is the dominated hypervolume, the union of boxes `[0, point]`:
 
 ```text
-FG-2(candidate) = HV(frontier ∪ {candidate}) − HV(frontier)
+FG-2(candidate) = HV(frontier ∪ {handicap(candidate)}) − HV(frontier)
+handicap: RP-KL + 0.002 · decode × (1 − max(1%, spread)) · prefill × (1 − max(3%, spread)) · memory + 0.1 GiB
 ```
 
-Dominated, invalid, external rows earn 0. Any axis counts: a slower but much more faithful map earns
-like a faster one. Paid tiers (`eval:XL` … `eval:XS`) are fixed buckets of FG-2, never manual judgments
-([rewards.md](rewards.md)); formula, box and floors are versioned with the evaluator epoch. Rank: `bittrellis frontier --with-seeds artifacts/mine`.
+- **Only gains beyond noise count.** The handicap removes the part of every improvement that is within
+  the ε floors, so a copy of V0 that differs by 0.01 tok/s earns exactly 0.
+- **Distinct or nothing.** A result earns only if it is materially better than *every* other valid
+  internal row on at least one objective (the same test as dominance, RP-KL significance included).
+- Dominated, invalid and external rows earn 0. Any axis counts: a slower but much more faithful map
+  earns like a faster one.
+
+Paid tiers (`eval:XL` … `eval:XS`) are fixed buckets of FG-2, never manual judgments
+([rewards.md](rewards.md)); formula, box and floors are versioned with the evaluator epoch. Rank:
+`bittrellis frontier --with-seeds artifacts/mine`.

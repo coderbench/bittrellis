@@ -13,7 +13,7 @@ Supersedes the original blueprint and v2: v2's rules plus six fixes ([§14](#14-
 - **Objectives:** RP-KL ↓ · decode tok/s ↑ · 4K prefill tok/s ↑ · peak GPU memory ↓.
 - **Out of scope:** pruning, distillation, fine-tuning/QAT, adapters, architecture/tokenizer/kernel changes, other models/GPUs/runtimes.
 
-Pins: [`configs/hpc01.yaml`](../configs/hpc01.yaml), [`configs/sources.lock.json`](../configs/sources.lock.json). Changing evaluation, frontier or gates needs a new **evaluator epoch** (versioned rule set; now `hpc01-e2`).
+Pins: [`configs/hpc01.yaml`](../configs/hpc01.yaml), [`configs/sources.lock.json`](../configs/sources.lock.json). Changing evaluation, frontier or gates needs a new **evaluator epoch** (versioned rule set; now `hpc01-e3`).
 
 ## 2. Runtime truth
 
@@ -88,7 +88,7 @@ Documents begin with `<|endoftext|>`. New categories (e.g. instruction following
 |---|---|---|
 | lower by > 0.002 and paired 95% CI excludes 0 | higher by > max(floor, either row's two-run spread); floors 1% / 3% | lower by > 0.1 GiB |
 
-A dominates B if materially better somewhere and worse nowhere. **FG-2** = the normalized 4-D dominated hypervolume a valid internal row adds; versioned. The paid tier is a fixed bucket of FG-2 (`rewards.tiers_fg2`: `eval:XL` ≥ 0.60%, `L` ≥ 0.30%, `M` ≥ 0.15%, `S` ≥ 0.07%, `XS` > 0), never a manual judgment; `eval:none` for no gain, `eval:REJECT` for a failed gate, audit or screen ([rewards.md](rewards.md)).
+A dominates B if materially better somewhere and worse nowhere. **FG-2** = the normalized 4-D dominated hypervolume a valid internal row adds, **noise-aware**: the row is first handicapped by the ε floors on every objective (RP-KL +0.002, decode and prefill −max(floor, spread), memory +0.1 GiB), and it earns nothing unless it is materially better than every other valid row on some objective; versioned. The paid tier is a fixed bucket of FG-2 (`rewards.tiers_fg2`: `eval:XL` ≥ 0.50%, `L` ≥ 0.25%, `M` ≥ 0.12%, `S` ≥ 0.035%, `XS` ≥ 0.005%), never a manual judgment; `eval:none` for no gain, `eval:REJECT` for a failed gate, audit or screen ([rewards.md](rewards.md)).
 
 ## 8. Gates
 
@@ -98,7 +98,7 @@ Frontier entry requires all of:
 2. **Runtime correctness:** every scoring/benchmark process loads and exits 0; no NaN/Inf log-probs; argmax ids in vocabulary; executed map = manifest; no unpinned `SPARKINFER_*` reaches the runtime.
 3. **Fidelity:** RP-KL ≤ 0.30, top-1 ≥ 0.80.
 4. **Long context:** every needle BF16 retrieves at 8K/16K/32K is retrieved (success 1.0 per length). Long-context RP-KL is reported, not gated.
-5. **Tasks:** no SparkInfer quality suite drops > 6 passed items below V0.
+5. **Tasks:** all 784 SparkInfer quality questions, compared with V0 question by question: fail if losses significantly exceed gains (exact one-sided McNemar, p < 0.05 overall, p < 0.01 per suite) or any suite keeps fewer than half of V0's passes.
 6. **Holdout:** PASS (§9).
 
 ## 9. Holdout
@@ -127,7 +127,7 @@ observe PR heads ─▶ SCREEN (no GPU): queue share · validate · duplicate ·
 
 [`evaluator/pr_bot.py`](../evaluator/pr_bot.py) runs it. Manifest-only PRs use trusted `main` code; contributed code (quantizers, search) waits for a maintainer's `eval-approved` label; PRs touching evaluator paths are never auto-evaluated.
 
-**Copies** are judged by expanded recipe and encoder output bytes, not source text. The first-observed head is the original; a later PR ranks against other authors' earlier open PRs on the frontier, earning only what it adds ([guards.md](guards.md)). **Contributed quantizer code** runs only in an unprivileged sandbox account (expand, probe, build, regenerate); trusted `main` code audits and measures its output. **Payment:** each pass the bot marks one `bt:merge-first` result; a maintainer merges, the tier on a merged PR is final, and Gittensor pays that tier ([rewards.md](rewards.md)).
+**Copies** are judged by expanded recipe and encoder output bytes, not source text. The first-observed head is the original; a later PR ranks against other authors' earlier open PRs on the frontier, earning only what it adds ([guards.md](guards.md)). **Contributed quantizer code** runs only in an unprivileged sandbox account (expand, probe, build, regenerate); trusted `main` code audits and measures its output. **Payment:** each pass the bot marks one `bt:merge-first` result; a maintainer merges, the tier on a merged PR is final, and Gittensor pays that tier. **No private holdout PASS, no paid tier:** such a result is `bt:provisional` ([rewards.md](rewards.md)).
 
 ## 11. Artifacts
 

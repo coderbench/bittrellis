@@ -30,14 +30,14 @@ bittrellis holdout check models/candidates/<name> --private /secure/holdout-2026
 Build fails loudly if a short category has under 4,096 tokens. The PR bot runs the check when started
 with `--private`; V0 is scored once per epoch, cached.
 
-## PASS rule (epoch hpc01-e2)
+## PASS rule (epoch hpc01-e3)
 
 1. audit passed;
 2. holdout RP-KL ≤ `gates.rp_kl_max` (0.30);
 3. keeps every holdout needle BF16 retrieves;
 4. **transfer:** if public RP-KL gain over V0 is significant (paired 95% interval excludes 0), holdout gain over V0 is ≥ `evaluation.holdout.min_gain_ratio` (0.5) of it.
 
-Ranking uses reproducible *public* RP-KL; the holdout only rejects gains that do not carry over, so
+A paid tier requires an explicit PASS: an evaluator without a private holdout labels results `bt:provisional`. Ranking uses reproducible *public* RP-KL; the holdout only rejects gains that do not carry over, so
 miners can optimize public fidelity only until it stops generalizing.
 
 ## Known limits

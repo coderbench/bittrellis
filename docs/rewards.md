@@ -25,17 +25,20 @@ Your emission share: your earned score against everyone else's.
 
 FG-2 ([key terms](../README.md#key-terms)) buckets into SparkInfer's tiers. Thresholds: `rewards.tiers_fg2` in [`configs/hpc01.yaml`](../configs/hpc01.yaml), calibrated to the seeds.
 
-| Label | FG-2 | Proposed multiplier | Seed at this level |
+| Label | Noise-aware FG-2 | Proposed multiplier | Seed at this level |
 |---|---|---:|---|
-| ![eval:XL](https://img.shields.io/badge/eval%3AXL-0e8a16?style=flat-square) | ≥ 0.60% | ×4.0 | V0, the shipped map (0.66%) |
-| ![eval:L](https://img.shields.io/badge/eval%3AL-2da44e?style=flat-square) | ≥ 0.30% | ×2.5 | V13, calibrated MLP bytes (0.43%) |
-| ![eval:M](https://img.shields.io/badge/eval%3AM-4ac26b?style=flat-square) | ≥ 0.15% | ×1.5 | — |
-| ![eval:S](https://img.shields.io/badge/eval%3AS-8ddb8c?style=flat-square) | ≥ 0.07% | ×1.0 | V1 all Q4_K (0.13%), V4 (0.10%) |
-| ![eval:XS](https://img.shields.io/badge/eval%3AXS-c6efce?style=flat-square) | > 0, beyond noise | ×0.5 | V6 (0.05%), V5 (0.03%) |
-| ![eval:none](https://img.shields.io/badge/eval%3Anone-bfc5cc?style=flat-square) | 0: dominated, or a duplicate | ×0 | V3, V7, V9 |
+| ![eval:XL](https://img.shields.io/badge/eval%3AXL-0e8a16?style=flat-square) | ≥ 0.50% | ×4.0 | — |
+| ![eval:L](https://img.shields.io/badge/eval%3AL-2da44e?style=flat-square) | ≥ 0.25% | ×2.5 | V13, calibrated MLP bytes (0.30%) |
+| ![eval:M](https://img.shields.io/badge/eval%3AM-4ac26b?style=flat-square) | ≥ 0.12% | ×1.5 | V0, the shipped map (0.19%) |
+| ![eval:S](https://img.shields.io/badge/eval%3AS-8ddb8c?style=flat-square) | ≥ 0.035% | ×1.0 | V4 (0.05%), V1 all Q4_K (0.04%) |
+| ![eval:XS](https://img.shields.io/badge/eval%3AXS-c6efce?style=flat-square) | ≥ 0.005% | ×0.5 | V6 (0.02%), V5 (0.007%) |
+| ![eval:none](https://img.shields.io/badge/eval%3Anone-bfc5cc?style=flat-square) | below 0.005%, dominated, or a duplicate | ×0 | V3, V7, V9; a copy of V0 within noise |
 | ![eval:REJECT](https://img.shields.io/badge/eval%3AREJECT-b60205?style=flat-square) | failed a gate, the audit or a screen | ×0 | — |
 
+FG-2 only counts gains beyond measurement noise ([frontier.md](frontier.md#fg-2)).
+
 - A PR still waiting (queue, approval, maintainer) has **no** tier label.
+- **No private holdout PASS, no paid tier.** A result measured without one is `bt:provisional`.
 - FG-2 counts merged results and earlier open PRs by other authors: a near-copy earns only what it adds ([guards.md](guards.md)).
 
 ## Merging
