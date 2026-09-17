@@ -1,7 +1,7 @@
 {
   "track": "HPC-01",
   "track_version": 2,
-  "evaluator_epoch": "hpc01-e2",
+  "evaluator_epoch": "hpc01-e3",
   "frontier_gain_version": "FG-2",
   "objectives": {
     "rp_kl": "min",
@@ -49,12 +49,14 @@
       "resident_after_load_gib": 21.4,
       "peak_host_gib": 16.199,
       "checkpoint_gib": 16.68569065630436,
-      "tasks_passed": 147,
+      "tasks_passed": 570,
+      "tasks_n": 784,
       "holdout": null,
       "valid": true,
       "gate_failures": [],
       "frontier": true,
-      "frontier_gain": 0.006635402608436036
+      "frontier_gain": 0.0019336075720904622,
+      "dominated_by": []
     },
     {
       "id": "761abdfe22f7be0d",
@@ -70,12 +72,14 @@
       "resident_after_load_gib": 18.9,
       "peak_host_gib": 43.703,
       "checkpoint_gib": 50.95601684600115,
-      "tasks_passed": 145,
+      "tasks_passed": 575,
+      "tasks_n": 784,
       "holdout": null,
       "valid": true,
       "gate_failures": [],
       "frontier": true,
-      "frontier_gain": 0.0012557911651808473
+      "frontier_gain": 0.0003972891518187749,
+      "dominated_by": []
     },
     {
       "id": "fe5f0291a327017e",
@@ -91,12 +95,14 @@
       "resident_after_load_gib": 21.4,
       "peak_host_gib": 16.201,
       "checkpoint_gib": 16.685693942010403,
-      "tasks_passed": 144,
+      "tasks_passed": 566,
+      "tasks_n": 784,
       "holdout": null,
       "valid": true,
       "gate_failures": [],
       "frontier": true,
-      "frontier_gain": 0.004349839534508543
+      "frontier_gain": 0.0030355574521092332,
+      "dominated_by": []
     },
     {
       "id": "108f52cb31637e3b",
@@ -112,12 +118,16 @@
       "resident_after_load_gib": 23.5,
       "peak_host_gib": 18.396,
       "checkpoint_gib": 18.943435736000538,
-      "tasks_passed": 148,
+      "tasks_passed": 573,
+      "tasks_n": 784,
       "holdout": null,
       "valid": true,
       "gate_failures": [],
       "frontier": false,
-      "frontier_gain": 0.0
+      "frontier_gain": 0.0,
+      "dominated_by": [
+        "V13-mlp-unsloth-bytes"
+      ]
     },
     {
       "id": "8ee4f9b18f007a8e",
@@ -133,12 +143,14 @@
       "resident_after_load_gib": 21.0,
       "peak_host_gib": 23.612,
       "checkpoint_gib": 24.097743801772594,
-      "tasks_passed": 145,
+      "tasks_passed": 566,
+      "tasks_n": 784,
       "holdout": null,
       "valid": true,
       "gate_failures": [],
       "frontier": true,
-      "frontier_gain": 0.0010195539322542801
+      "frontier_gain": 0.0010034349323919667,
+      "dominated_by": []
     },
     {
       "id": "0093abe3f5d3de50",
@@ -154,12 +166,16 @@
       "resident_after_load_gib": 21.3,
       "peak_host_gib": 18.447,
       "checkpoint_gib": 18.931760497391224,
-      "tasks_passed": 144,
+      "tasks_passed": 556,
+      "tasks_n": 784,
       "holdout": null,
-      "valid": true,
-      "gate_failures": [],
-      "frontier": true,
-      "frontier_gain": 0.00027010473775079813
+      "valid": false,
+      "gate_failures": [
+        "task guard overall: lost 33, gained 19 vs incumbent (p=0.0352 < 0.05)"
+      ],
+      "frontier": false,
+      "frontier_gain": 0.0,
+      "dominated_by": []
     },
     {
       "id": "0357c99d6f50a880",
@@ -175,12 +191,14 @@
       "resident_after_load_gib": 20.2,
       "peak_host_gib": 39.111,
       "checkpoint_gib": 39.59577666223049,
-      "tasks_passed": 145,
+      "tasks_passed": 563,
+      "tasks_n": 784,
       "holdout": null,
       "valid": true,
       "gate_failures": [],
       "frontier": true,
-      "frontier_gain": 0.0004689323871657214
+      "frontier_gain": 0.00023805116700739704,
+      "dominated_by": []
     },
     {
       "id": "e285ede4f647cdeb",
@@ -196,12 +214,16 @@
       "resident_after_load_gib": 20.8,
       "peak_host_gib": 27.656,
       "checkpoint_gib": 28.140733793377876,
-      "tasks_passed": 147,
+      "tasks_passed": 561,
+      "tasks_n": 784,
       "holdout": null,
       "valid": true,
       "gate_failures": [],
       "frontier": false,
-      "frontier_gain": 0.0
+      "frontier_gain": 0.0,
+      "dominated_by": [
+        "V6-mlp-q4k"
+      ]
     },
     {
       "id": "9d0cb1d5251219a5",
@@ -217,12 +239,16 @@
       "resident_after_load_gib": 19.8,
       "peak_host_gib": 46.522,
       "checkpoint_gib": 47.007829792797565,
-      "tasks_passed": 148,
+      "tasks_passed": 562,
+      "tasks_n": 784,
       "holdout": null,
       "valid": true,
       "gate_failures": [],
       "frontier": false,
-      "frontier_gain": 0.0
+      "frontier_gain": 0.0,
+      "dominated_by": [
+        "V1-all-q4k"
+      ]
     }
   ],
   "external": [
@@ -241,11 +267,15 @@
       "peak_host_gib": 20.534,
       "checkpoint_gib": 21.80933252722025,
       "tasks_passed": 149,
+      "tasks_n": 196,
       "holdout": null,
-      "valid": true,
-      "gate_failures": [],
+      "valid": false,
+      "gate_failures": [
+        "task guard: per-question results missing"
+      ],
       "frontier": false,
-      "frontier_gain": null
+      "frontier_gain": null,
+      "dominated_by": []
     },
     {
       "id": "R2",
@@ -262,11 +292,13 @@
       "peak_host_gib": null,
       "checkpoint_gib": 15.333704859018326,
       "tasks_passed": null,
+      "tasks_n": null,
       "holdout": null,
       "valid": true,
       "gate_failures": [],
       "frontier": false,
-      "frontier_gain": null
+      "frontier_gain": null,
+      "dominated_by": []
     }
   ],
   "frontier": [
@@ -274,7 +306,6 @@
     "V1-all-q4k",
     "V13-mlp-unsloth-bytes",
     "V4-gdn-q4k",
-    "V5-attn-q4k",
     "V6-mlp-q4k"
   ]
 }

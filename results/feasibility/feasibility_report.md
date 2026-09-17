@@ -90,6 +90,25 @@ RP-KL per category (lower = closer to the original). Bold = best internal value.
   much: an open target.
 - **No map wins every column.** A search aware of per-category sensitivity can combine them.
 
+## Epoch hpc01-e3 update (scoring fixes)
+
+A Gittensor review found three scoring flaws. The fixes changed the rules, so the epoch moved to
+`hpc01-e3`; drift, speed and memory numbers above are unchanged and were not re-measured.
+
+| Fix | Effect on these seeds |
+|---|---|
+| **FG-2 counts only gains beyond noise** (each result handicapped by the ε floors, and it must beat every other result beyond noise somewhere) | gains fall to V13 0.30%, V0 0.19%, V4 0.10%, V1 0.04%, V6 0.02%; a copy of V0 that differs by 0.01 tok/s now scores 0 instead of earning a tier |
+| **Task guard: all 784 questions, compared with V0 question by question** (exact McNemar; no suite may keep under half of V0's passes) | **V5 now fails the guard** (lost 33, gained 19, p = 0.035) and leaves the frontier; every other seed passes |
+| **A paid tier needs a private holdout PASS** | results measured without one are `bt:provisional` and earn nothing |
+
+Task scores on the full set (V0 570/784): V1 575, V3 573, V13 566, V4 566, V6 563, V9 562, V7 561,
+V5 556. The old guard used 196 questions, with suites as small as five, and allowed six lost answers
+per suite.
+
+**Fidelity is not accuracy.** V13's headline is 11.5% less drift from the original model. On tasks it
+scores 566 against V0's 570, a 4-question difference that the paired guard does not call a
+regression. Neither number shows V13 is *better* at tasks.
+
 ## Decision questions
 
 | | Question | Answer | Evidence |
