@@ -7,111 +7,92 @@
   <img src="https://img.shields.io/badge/track-HPC--01-3b82f6" alt="track HPC-01"/>
   <img src="https://img.shields.io/badge/GPU-RTX%205090-76b900" alt="RTX 5090"/>
   <img src="https://img.shields.io/badge/runtime-SparkInfer%200.5.8-a855f7" alt="SparkInfer 0.5.8"/>
+  <img src="https://img.shields.io/badge/rewards-Gittensor%20SN74-0e8a16" alt="Gittensor SN74"/>
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT"/>
+</p>
+
+<p align="center">
+  <a href="#the-problem">Problem</a> ·
+  <a href="#what-the-first-measurements-found">Results</a> ·
+  <a href="#mine-it">Mine it</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#docs">Docs</a>
 </p>
 
 > **BitTrellis automatically searches for the best way to compress an LLM for a particular GPU,
 > while keeping as much of the original model's quality as possible.**
 
-## The problem, in plain words
+## The problem
 
-Large language models are too big for consumer GPUs as they are released. Qwen3.8-27B needs about
-52 GB in its original form, and an RTX 5090 has 32 GB.
-
-So the model has to be **compressed** (quantized) into formats such as NVFP4, FP8 or Q4_K. That
-makes it fit, but compression always costs a little quality: the compressed model no longer
+Qwen3.8-27B needs about **52 GB** as released. An RTX 5090 has **32 GB**. So the model must be
+**compressed** (quantized) into formats like NVFP4, FP8 or Q4_K. It then fits, but it no longer
 answers *exactly* like the original.
 
-The usual approach uses one recipe for the whole model:
+The usual approach uses one recipe everywhere:
 
 ```text
-layer 1 → NVFP4    layer 2 → NVFP4    …    layer 64 → NVFP4      (same method everywhere)
+layer 1 → NVFP4    layer 2 → NVFP4    …    layer 64 → NVFP4
 ```
 
-But the parts of a model do not react to compression in the same way. Some layers tolerate
-aggressive compression perfectly. Some lose noticeably more quality. And some improve simply by
-using a **better compression algorithm**, even when the format stays the same.
+But layers are not equal. Some shrug off compression, some lose quality, and some improve just by
+using a **better compression algorithm** in the same format. So the real question is:
 
-**BitTrellis asks: what is the best compression recipe for this exact model on this exact GPU?**
+**What is the best compression recipe for this exact model on this exact GPU?**
 
 ## What BitTrellis does
 
-It tries different recipes, builds each one into a real checkpoint, and measures it on the real GPU.
-The picture below shows three real recipes. Each column is one layer of the model, and the color
-shows how that part is compressed.
+It tries recipes, builds each one into a real checkpoint, and measures it on the real GPU. Each
+column below is one layer; the color is how that part is compressed.
 
 <p align="center"><img src="docs/assets/recipes.svg" alt="Three recipes drawn layer by layer. V0, today's checkpoint, uses the standard NVFP4 encoder everywhere. V13 uses a calibrated encoder for MLP layers 0 to 55 and is 11% closer to the original with 4% slower prompt reading. V3 uses FP8 on every recurrent block and is 17% closer to the original with 13% slower generation." width="100%"/></p>
 
-For every candidate it answers four questions:
+Every candidate answers four questions, and only the best trade-offs survive:
 
 | | Question | Why it matters |
 |---|---|---|
-| 1 | **How close is it to the original model?** | quality you keep |
-| 2 | How fast does it generate text (decode)? | chat and agent speed |
-| 3 | How fast does it read a long prompt (prefill)? | time to first token |
+| 1 | **How close is it to the original model?** | the quality you keep |
+| 2 | How fast does it generate text? | chat and agent speed |
+| 3 | How fast does it read a long prompt? | time to first token |
 | 4 | How much GPU memory does it need? | what fits, how much context |
 
-The repository keeps the **best trade-offs** and publishes the checkpoints that win.
-
-<p align="center"><img src="docs/assets/how-it-works.svg" alt="Five steps: write a recipe, build the checkpoint, audit it, measure quality, speed and memory on the RTX 5090, and keep it only if nothing else beats it on every measure." width="100%"/></p>
-
-## An improvement looks like this
-
-```text
-Today's checkpoint      speed 95 tok/s · memory 22 GB · closeness to original: good
-BitTrellis checkpoint   speed 95 tok/s · memory 22 GB · closeness to original: better
-```
-
-Same GPU, same speed, same memory, but the model behaves more like the original. That is a real
-improvement. The first measurements already found one that comes close (numbers below).
-
-A result that keeps quality while needing less memory, or that offers a better overall balance,
-counts too. **BitTrellis is not mainly a speed project.** It is about keeping quality while
-fitting the hardware.
-
-## BitTrellis vs SparkInfer
-
-SparkInfer is the engine that runs the model. BitTrellis decides which compressed model it runs.
+**A win looks like this:** same speed, same memory, but the model behaves more like the original.
+Using less memory at the same quality, or a better overall balance, counts too. **BitTrellis is not
+mainly a speed project** — it is about keeping quality while fitting the hardware.
 
 | | [SparkInfer](https://github.com/gittensor-ai-lab/sparkinfer) | BitTrellis |
 |---|---|---|
-| Question | *How can we run this model faster?* | *Which compressed version of the model should run?* |
-| Works on | CUDA kernels, prefill, decode, scheduling, KV cache | compression format, compression algorithm, which parts get which, quality vs memory |
-| In short | **a better engine** | **a better version of the model for that engine** |
+| Asks | *How can we run this model faster?* | *Which compressed version should run?* |
+| Works on | CUDA kernels, prefill, decode, KV cache | formats, encoders, which parts get which |
+| In short | **a better engine** | **a better model for that engine** |
 
 ---
 
 <!-- STATUS -->
 ## What the first measurements found
 
-> **Verdict: PASS.** Different recipes really do trade quality, speed and memory differently on the
-> RTX 5090, and no recipe wins everything. That is exactly what makes a search worth running.
+> **Verdict: PASS.** Recipes really do trade quality, speed and memory differently on the RTX 5090,
+> and no recipe wins everything. That is exactly what makes a search worth running.
 > Full numbers: [feasibility report](results/feasibility/feasibility_report.md).
 
 <p align="center"><img src="docs/assets/scorecard.svg" alt="Scorecard of every measured recipe against today's checkpoint on closeness to the original, generation speed, prompt reading speed and GPU memory. V13 is 11% closer with 4% slower prompt reading and no other change. V3 is 17% closer but 13% slower at generation. Q4_K recipes save up to 1.8 GB but read prompts up to 49% slower." width="100%"/></p>
 
-In plain words:
-
-- **Best balance so far: V13.** Same recipe as today's checkpoint, but a better encoder for the MLP
-  layers. It stays **11.5% closer to the original** at the same generation speed and the same memory.
-  The price: it reads long prompts **4.4% slower**.
-- **Different parts guard different skills.** A better MLP encoder halves the drift on math.
-  Giving the recurrent layers 8 bits cuts long-document drift by 62%, but generates 13% slower.
-- **Changes don't simply add up.** Two changes together behave differently from each one alone,
-  so combinations have to be measured.
-- **Plenty of headroom.** The outside reference checkpoints stay 35–53% closer to the
-  original, at a large speed cost. Getting that quality at SparkInfer speed is the open problem.
+- **Best balance so far: V13.** Today's recipe with a better MLP encoder: **11.5% closer to the
+  original** at the same generation speed and memory, but prompts read **4.4% slower**.
+- **Different parts guard different skills.** The better MLP encoder halves math drift. 8-bit
+  recurrent layers cut long-document drift by 62%, but generate 13% slower.
+- **Changes don't simply add up.** Combinations behave differently from single changes, so they
+  have to be measured.
+- **Plenty of headroom.** Outside reference checkpoints stay 35–53% closer to the original, at a
+  large speed cost. Getting that quality at SparkInfer speed is the open problem.
 <!-- /STATUS -->
 
----
-
 <!-- FRONTIER -->
-## The frontier today
+### The frontier today
 
-The **frontier** is the set of checkpoints that nothing else beats on every axis at once. A new
-result earns credit only if it pushes this set forward.
+The **frontier** is the set of checkpoints nothing else beats on every measure at once. New results
+earn only by pushing it forward.
 
-| | Checkpoint | Drift from original ↓ | Generation tok/s ↑ | 4K prompt tok/s ↑ | Peak GPU GiB ↓ |
+| | Checkpoint | Drift ↓ | Generation tok/s ↑ | 4K prompt tok/s ↑ | Peak GPU GiB ↓ |
 |---|---|---:|---:|---:|---:|
 | ★ | **V13** calibrated MLP encoder | **0.120** (−11.5%) | 94.4 | 14,110 | 22.0 |
 | ★ | V1 everything Q4_K | 0.124 | 94.8 | 7,537 | **20.3** |
@@ -121,15 +102,11 @@ result earns credit only if it pushes this set forward.
 | ★ | V4 recurrent path Q4_K | 0.142 | 94.9 | 12,011 | 21.6 |
 | | V3 recurrent path FP8 | 0.113 | 83.0 | 11,848 | 23.9 |
 
-Drift is Reference-Partition KL against the BF16 original; Δ is paired against V0 with a 95%
-interval that excludes zero. Every row passes every gate. V3, V7 and V9 were measured and are beaten
-by a frontier point.
+Drift is Reference-Partition KL against the BF16 original; Δ is paired against V0 with a 95% interval
+that excludes zero. Every row passes every gate. V3, V7 and V9 are beaten by a frontier point.
 
-### Comparison targets
-
-Like llama.cpp is SparkInfer's yardstick, BitTrellis measures two outside checkpoints on the same GPU,
-with the same corpus and the same metric. They show what is possible but are never ranked:
-llama.cpp is a different engine, and the unsloth checkpoint is not a legal manifest (its FP8 attention bytes are silently refit to Q4_K at load).
+**Comparison targets.** Just as llama.cpp is SparkInfer's yardstick, BitTrellis measures outside
+checkpoints on the same GPU, corpus and metric. They show what is possible but are never ranked:
 
 | | Reference | Drift ↓ | Generation tok/s ↑ | 4K prompt tok/s ↑ | Peak GPU GiB ↓ |
 |---|---|---:|---:|---:|---:|
@@ -137,85 +114,55 @@ llama.cpp is a different engine, and the unsloth checkpoint is not a legal manif
 | R1 | unsloth NVFP4 checkpoint on SparkInfer | 0.088 | 82.4 | 10,305 | 23.6 |
 | R3 | NVIDIA NVFP4 checkpoint | — | — | — | — |
 
-R3 cannot load on the pinned SparkInfer: its FP8 scales are per tensor, and the loader accepts only
-per-row scales. It marks the compatibility boundary.
+llama.cpp is a different engine. The unsloth checkpoint is not a legal manifest (its FP8 attention
+bytes are silently refit to Q4_K at load). R3 cannot load at all: its FP8 scales are per tensor, and
+the pinned loader accepts only per-row scales.
 
-The target for miners: move the SparkInfer frontier toward the references' quality without giving
-up SparkInfer's speed.
+**The miner's target:** move the frontier toward the references' quality without giving up
+SparkInfer's speed.
 <!-- /FRONTIER -->
 
 ---
 
-# How it works (technical)
+## Mine it
 
-## Current target: HPC-01
+You don't rewrite the inference engine. You submit a better model for it — and get paid on
+[Gittensor](https://github.com/entrius/gittensor) when it merges.
 
-| | |
-|---|---|
-| Model | Qwen3.8-27B: 64 layers, 48 Gated DeltaNet + 16 full attention; BF16 weights hash-locked |
-| GPU | 1× NVIDIA GeForce RTX 5090 (32 GB) |
-| Runtime | SparkInfer v0.5.8 @ `b1ed168`, kernels unmodified, every runtime knob pinned |
-| Search space | 273 units × legal execution format × legal quantizer |
-| Fidelity | **Reference-Partition KL** vs BF16 on a 78K-token corpus (21,624 scored positions) |
-| Objectives | RP-KL ↓ · decode tok/s ↑ · 4K prefill tok/s ↑ · peak GPU memory ↓ |
-| Guards | audit · runtime correctness · 8K/16K/32K needles · task guard · private holdout |
-| Frozen | architecture, tokenizer, every non-searchable tensor, the BF16 source weights |
+<p align="center"><img src="docs/assets/pr-to-tao.svg" alt="Five steps: open a PR with a recipe or a new encoder; the bot screens it without the GPU; measures quality, speed and memory on the RTX 5090; labels it with a tier from eval:XL to eval:XS; a maintainer merges it and Gittensor pays the tier." width="100%"/></p>
 
-Everything is pinned in [`configs/hpc01.yaml`](configs/hpc01.yaml) and
-[`configs/sources.lock.json`](configs/sources.lock.json). The rules are in the
-[specification](docs/specification.md).
+1. **Read what the seeds measured** in the [feasibility report](results/feasibility/feasibility_report.md).
+2. **Write a recipe**, `manifests/<name>.yaml`, or a new quantizer plus the recipe that uses it.
+3. **Open a PR.** The [evaluator bot](evaluator/pr_bot.py) screens it, measures it, and comments with the score.
+4. **Get a tier** — the only thing Gittensor pays, when a maintainer merges the PR:
 
-> **Which parts of the model should spend precision, which encoder should produce their bytes,
-> and which parts can give it up?**
+| Tier | Frontier space added (FG-2) | Proposed multiplier |
+|---|---|---:|
+| ![eval:XL](https://img.shields.io/badge/eval%3AXL-0e8a16?style=flat-square) | ≥ 0.60% | ×4.0 |
+| ![eval:L](https://img.shields.io/badge/eval%3AL-2da44e?style=flat-square) | ≥ 0.30% | ×2.5 |
+| ![eval:M](https://img.shields.io/badge/eval%3AM-4ac26b?style=flat-square) | ≥ 0.15% | ×1.5 |
+| ![eval:S](https://img.shields.io/badge/eval%3AS-8ddb8c?style=flat-square) | ≥ 0.07% | ×1.0 |
+| ![eval:XS](https://img.shields.io/badge/eval%3AXS-c6efce?style=flat-square) | > 0, beyond noise | ×0.5 |
+| ![eval:none](https://img.shields.io/badge/eval%3Anone-bfc5cc?style=flat-square) ![eval:REJECT](https://img.shields.io/badge/eval%3AREJECT-b60205?style=flat-square) | nothing new, or failed | ×0 |
 
----
+For scale: today's best move, V13, would be `eval:L`. Duplicates earn nothing, and a near-copy of
+an earlier PR earns only what it adds.
 
-## What runs is what counts
+**Start here:** [Miner guide](docs/miner_guide.md) · [Rewards](docs/rewards.md) · [Guards](docs/guards.md)
 
-A checkpoint can *store* anything; the pinned loader decides what *executes*:
-
-```text
-                        stored ▸   NVFP4          FP8 (per row)      BF16
-   ─────────────────────────────────────────────────────────────────────────
-   GDN  qkv · z · out   runs  ▸   NVFP4          FP8                Q4_K fit
-   attention q·k·v·o    runs  ▸   NVFP4          Q4_K refit (!)     Q4_K fit
-   MLP  gate·up·down    runs  ▸   NVFP4          Q4_K refit (!)     Q4_K fit
-   lm_head   batch 1    runs  ▸   Q4_K refit     Q4_K refit         Q4_K fit
-             packed     runs  ▸   NVFP4*         Q4_K refit         Q4_K fit      * if VRAM allows
-```
-
-A manifest names what **runs**; anything the runtime would silently convert is rejected. Q4_K is a
-runtime fit with no encoder choice. FP8 executes only on GDN. Evidence, down to loader line numbers:
-[docs/precision_space.md](docs/precision_space.md).
-
----
-
-## Key terms
-
-| Term | Meaning |
-|---|---|
-| **Unit** | The smallest piece whose format the runtime lets you choose: `L7.attn.q`, `L40.gdn.z`, `L12.mlp`, `lm_head`. There are 273. |
-| **Manifest** | A few lines of YAML assigning `format @ quantizer` to every unit. It *is* the submission. |
-| **Quantizer** | What produces a unit's bytes: `runtime` (Q4_K), `rtn` (regenerable), `baseline` / `unsloth` (attested), or [yours](docs/quantizer_contract.md). |
-| **Audit** | Proof that a checkpoint is nothing but legal encodings of the hash-locked weights: every source verified, frozen tensors byte-identical, regenerable units rebuilt byte-for-byte. |
-| **RP-KL** | Reference-Partition KL: the candidate's next-token distribution vs BF16's, both projected onto BF16's top-256 tokens plus a tail bucket. Same partition for every candidate, never larger than full KL, compared *paired* position by position. |
-| **FG-2** | Frontier Gain: the normalized 4-D hypervolume a result adds to the internal frontier. It replaces effort-based size labels with measured effect. |
-
----
-
-## Quickstart (no GPU)
+### Try it without a GPU
 
 ```bash
 git clone https://github.com/coderbench/bittrellis && cd bittrellis
 pip install -e ".[dev]"
-pytest -q                                   # build · audit · lineage · tamper detection · RP-KL · frontier
+pytest -q                                   # build · audit · tamper detection · RP-KL · frontier · bot
 
 bittrellis quantizers                       # runtime · baseline · unsloth · rtn
 bittrellis inventory                        # 273 units · 144 GDN · 64 attention · 64 MLP · lm_head
 bittrellis manifest experiments/feasibility/variants/V13-mlp-unsloth-bytes.yaml --expand
 ```
 
-A manifest:
+A recipe is a few lines of YAML:
 
 ```yaml
 schema: bittrellis/manifest@2
@@ -232,7 +179,8 @@ rules:
     format: FP8                 # protect the deep state-writing projections
 ```
 
-## On an RTX 5090 host
+<details>
+<summary><b>Measure it yourself on an RTX 5090</b></summary>
 
 ```bash
 scripts/setup_sparkinfer.sh                 # pinned runtime + the quality-measuring tool
@@ -246,67 +194,106 @@ bittrellis compare results/feasibility/artifacts/V0-baseline-rebuild artifacts/m
 bittrellis frontier --with-seeds artifacts/mine
 ```
 
----
-
-## For miners
-
-You don't rewrite the inference engine. You submit a better artifact for it.
-
-1. Read what the seeds measured: [feasibility report](results/feasibility/feasibility_report.md).
-2. Write `manifests/<name>.yaml`, or a new quantizer plus the manifest that uses it.
-3. Open a PR. The [evaluator bot](evaluator/pr_bot.py) screens it without the GPU, then builds, audits, scores, benchmarks and holdout-checks it on the pinned RTX 5090, and comments with a paired comparison against V0 and your FG-2.
-4. The bot labels the PR with a tier, `eval:XL` down to `eval:XS`, or `eval:none` / `eval:REJECT`. When a maintainer merges it, Gittensor pays by that tier ([rewards](docs/rewards.md)). Duplicates earn nothing, and a near-copy of an earlier PR earns only what it adds ([guards](docs/guards.md)).
-
-[Miner guide](docs/miner_guide.md) · [Manifests](docs/precision_manifest.md) ·
-[Quantizer contract](docs/quantizer_contract.md) · [Evaluation](docs/evaluation.md) ·
-[Frontier](docs/frontier.md) · [Search](docs/search.md) · [Holdout](docs/holdout.md) · [Guards](docs/guards.md) · [Rewards](docs/rewards.md)
+</details>
 
 ---
 
-## Repository
+## How it works
+
+<p align="center"><img src="docs/assets/how-it-works.svg" alt="Five steps: write a recipe, build the checkpoint, audit it, measure quality, speed and memory on the RTX 5090, and keep it only if nothing else beats it on every measure." width="100%"/></p>
+
+### The track: HPC-01
+
+| | |
+|---|---|
+| Model | Qwen3.8-27B: 64 layers, 48 Gated DeltaNet + 16 full attention; BF16 weights hash-locked |
+| GPU | 1× NVIDIA GeForce RTX 5090 (32 GB) |
+| Runtime | SparkInfer v0.5.8 @ `b1ed168`, kernels unmodified, every runtime knob pinned |
+| Search space | 273 units × legal execution format × legal quantizer |
+| Fidelity | **Reference-Partition KL** vs BF16 on a 78K-token corpus (21,624 scored positions) |
+| Objectives | RP-KL ↓ · decode tok/s ↑ · 4K prefill tok/s ↑ · peak GPU memory ↓ |
+| Guards | screen · audit · runtime correctness · 8K/16K/32K needles · task guard · private holdout |
+| Frozen | architecture, tokenizer, every non-searchable tensor, the BF16 source weights |
+
+Everything is pinned in [`configs/hpc01.yaml`](configs/hpc01.yaml) and
+[`configs/sources.lock.json`](configs/sources.lock.json). The rules are in the
+[specification](docs/specification.md).
+
+### Key terms
+
+| Term | Meaning |
+|---|---|
+| **Unit** | The smallest piece whose format the runtime lets you choose: `L7.attn.q`, `L40.gdn.z`, `L12.mlp`, `lm_head`. There are 273. |
+| **Manifest** | A few lines of YAML assigning `format @ quantizer` to every unit. It *is* the submission. |
+| **Quantizer** | What produces a unit's bytes: `runtime` (Q4_K), `rtn` (regenerable), `baseline` / `unsloth` (attested), or [yours](docs/quantizer_contract.md). |
+| **Audit** | Proof that a checkpoint is nothing but legal encodings of the hash-locked weights. |
+| **RP-KL** | How far next-token predictions drift from BF16, on BF16's top-256 tokens plus a tail bucket. Never larger than full KL; compared position by position. |
+| **FG-2** | Frontier Gain: the share of the normalized quality × speed × memory space a result adds. It decides the tier. |
+
+<details>
+<summary><b>What runs is what counts</b> — the loader decides the executed format</summary>
+
+A checkpoint can *store* anything; the pinned loader decides what *executes*:
+
+```text
+                        stored ▸   NVFP4          FP8 (per row)      BF16
+   ─────────────────────────────────────────────────────────────────────────
+   GDN  qkv · z · out   runs  ▸   NVFP4          FP8                Q4_K fit
+   attention q·k·v·o    runs  ▸   NVFP4          Q4_K refit (!)     Q4_K fit
+   MLP  gate·up·down    runs  ▸   NVFP4          Q4_K refit (!)     Q4_K fit
+   lm_head   batch 1    runs  ▸   Q4_K refit     Q4_K refit         Q4_K fit
+             packed     runs  ▸   NVFP4*         Q4_K refit         Q4_K fit      * if VRAM allows
+```
+
+A manifest names what **runs**; anything the runtime would silently convert is rejected. Q4_K is a
+runtime fit with no encoder choice. FP8 executes only on GDN. Evidence, down to the loader functions:
+[docs/precision_space.md](docs/precision_space.md).
+
+</details>
+
+<details>
+<summary><b>Repository layout</b></summary>
 
 ```text
 bittrellis/
-├── configs/                 hpc01.yaml (every pin) · sources.lock.json (every source file hash)
+├── configs/                 hpc01.yaml (every pin, gates, tiers) · sources.lock.json (every source hash)
 ├── bittrellis/
 │   ├── model/qwen38.py      config + loader contract → 273 units
 │   ├── precision.py         legal formats, loader resolver, executed-format semantics
 │   ├── manifest.py          rules → FORMAT@quantizer@vN per unit → candidate id
 │   ├── quantizers/          plugin contract · runtime · attested · regenerable (+ yours)
-│   ├── lineage.py           source hash verification
 │   ├── build.py             deterministic checkpoint writer (CPU)
-│   ├── validate.py          audit: frozen bytes, execution map, lineage replay + cache
+│   ├── validate.py          audit: frozen bytes, execution map, lineage replay
+│   ├── fingerprint.py       encoder fingerprints for the copy guard
 │   ├── eval/                corpus · BF16 reference · RP-KL · tasks · 2-run perf · llama.cpp
 │   ├── holdout.py           private rotating holdout, PASS/FAIL
 │   ├── frontier/            gates · ε-dominance · FG-2 · reports
 │   └── search.py            baseline one-group neighbors
 ├── tools/                   programs that measure how close a checkpoint stays to the original
-├── evaluator/               PR bot for validators
+├── evaluator/               PR bot · guards · sandbox (for validators)
 ├── data/corpus/             public fidelity corpus (hash-verified)
-├── experiments/feasibility/ seed manifests, pipelined runner, analysis
-├── results/feasibility/     seed artifacts = initial internal frontier, report, plots
-└── docs/                    specification · architecture · guides
+├── experiments/feasibility/ seed manifests, runner, analysis
+├── results/feasibility/     seed artifacts = initial frontier, report, plots
+└── docs/                    specification · guides
 ```
 
-## What this repo is not
+</details>
 
-- not another inference runtime ([SparkInfer](https://github.com/gittensor-ai-lab/sparkinfer) executes the artifact)
-- not a generic quantization library, model zoo, server or training framework
-- not a wrapper around `quantize(model, bits=4)`
-
-Quantization libraries provide primitives. SparkInfer provides execution. **BitTrellis searches the
-deployable artifact between them.**
-
-## Final goal
-
-A sequence of deep, reproducible, hardware-specific frontiers, one model × runtime × GPU at a time:
-
-```text
-today   Qwen3.8-27B × SparkInfer × RTX 5090
-later   next model × RTX 5090   ·   Qwen3.8 × next GPU   ·   …   (each its own track and epoch)
-```
+**What this is not:** another inference runtime, a generic quantization library, or a wrapper around
+`quantize(model, bits=4)`. Quantization libraries provide primitives, SparkInfer provides execution,
+and **BitTrellis searches the deployable artifact between them** — one model × runtime × GPU at a
+time (`today: Qwen3.8-27B × SparkInfer × RTX 5090`; each next model or GPU is its own track).
 
 ---
 
-[Specification v2.1](docs/specification.md) · [Architecture](docs/architecture.md) ·
-[Audit](docs/audit.md) · [Security](SECURITY.md) · [Blueprint review](docs/blueprint_review.md) · MIT license
+## Docs
+
+| If you want to… | Read |
+|---|---|
+| start mining | [Miner guide](docs/miner_guide.md) · [Manifests](docs/precision_manifest.md) · [Search](docs/search.md) |
+| write an encoder | [Quantizer contract](docs/quantizer_contract.md) · [Precision space](docs/precision_space.md) |
+| know how you are scored | [Evaluation](docs/evaluation.md) · [Frontier](docs/frontier.md) · [Rewards](docs/rewards.md) |
+| know what is rejected | [Guards](docs/guards.md) · [Audit](docs/audit.md) · [Holdout](docs/holdout.md) · [Security](SECURITY.md) |
+| read the rules and evidence | [Specification](docs/specification.md) · [Architecture](docs/architecture.md) · [Feasibility report](results/feasibility/feasibility_report.md) |
+
+MIT license · [Contributing](CONTRIBUTING.md)

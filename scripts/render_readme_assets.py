@@ -4,6 +4,7 @@
 
 - hero.svg          what the project does, in one picture
 - how-it-works.svg  the five steps every candidate goes through
+- pr-to-tao.svg     how a miner's pull request becomes a paid tier
 - recipes.svg       three real manifests, drawn layer by layer, with their measured result
 - scorecard.svg     every measured checkpoint against today's checkpoint (V0)
 
@@ -114,14 +115,23 @@ STEPS = (
 )
 
 
-def how_it_works(path: Path) -> None:
+REWARD_STEPS = (
+    ("Open a PR", ["a recipe, or a new", "encoder plus its recipe"]),
+    ("Screen", ["no GPU: duplicates,", "copies, memory, encoders"]),
+    ("Measure", ["quality, speed and memory", "on the real RTX 5090"]),
+    ("Tier label", ["eval:XL … eval:XS from", "the frontier space it adds"]),
+    ("Merge = paid", ["a maintainer merges;", "Gittensor pays the tier"]),
+)
+
+
+def how_it_works(path: Path, steps=STEPS) -> None:
     w, h = 1200, 200
-    step = (w - 80) / len(STEPS)
+    step = (w - 80) / len(steps)
     cy = 52
-    b = [f'<line class="rule" x1="{40 + step / 2}" y1="{cy}" x2="{40 + step * (len(STEPS) - 0.5)}" y2="{cy}" stroke-width="2"/>']
-    for i, (title, lines) in enumerate(STEPS):
+    b = [f'<line class="rule" x1="{40 + step / 2}" y1="{cy}" x2="{40 + step * (len(steps) - 0.5)}" y2="{cy}" stroke-width="2"/>']
+    for i, (title, lines) in enumerate(steps):
         cx = 40 + step * (i + 0.5)
-        last = i == len(STEPS) - 1
+        last = i == len(steps) - 1
         b.append(f'<circle cx="{cx}" cy="{cy}" r="18" fill="{"#8b5cf6" if last else "#5b8def"}"/>')
         b.append(text(cx, cy + 5, str(i + 1), size=15, weight=700, anchor="middle", fill="#ffffff"))
         b.append(text(cx, cy + 50, title, size=16, weight=600, anchor="middle"))
@@ -302,6 +312,7 @@ def main() -> None:
 
     hero(OUT / "hero.svg", inc["peak_gpu_gib"])
     how_it_works(OUT / "how-it-works.svg")
+    how_it_works(OUT / "pr-to-tao.svg", REWARD_STEPS)
 
     def result(name: str) -> list[tuple[str, str]]:
         r = rows[name]
