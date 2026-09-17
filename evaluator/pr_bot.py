@@ -188,9 +188,11 @@ def evaluate_pr(gh: GitHub, pr: dict, args, state: dict) -> None:
         main_manifests.mkdir()
         listing = subprocess.run(["git", "ls-tree", "--name-only", "origin/main", "manifests/"], cwd=REPO_ROOT,
                                  capture_output=True, text=True).stdout.split()
-        for f in listing:
-            if f.endswith(".yaml"):
-                (main_manifests / Path(f).name).write_text(
+        seeds = subprocess.run(["git", "ls-tree", "--name-only", "origin/main", "experiments/feasibility/variants/"],
+                               cwd=REPO_ROOT, capture_output=True, text=True).stdout.split()
+        for f in listing + seeds:  # seeds too, so copying a seed is rejected before any GPU time is spent
+            if f.endswith(".yaml") and f != manifests[0]:
+                (main_manifests / f.replace("/", "__")).write_text(
                     subprocess.run(["git", "show", f"origin/main:{f}"], cwd=REPO_ROOT, capture_output=True, text=True).stdout)
         if run(py + ["manifest", str(manifest), "--against", str(main_manifests)], code, log) != 0:
             gh.set_status_label(number, "invalid")
@@ -224,8 +226,11 @@ def evaluate_pr(gh: GitHub, pr: dict, args, state: dict) -> None:
             return
         if args.private:
             incumbent = Path(args.seeds) / "V0-baseline-rebuild"
+            (art / "holdout.json").unlink(missing_ok=True)
             run(py + ["holdout", "check", str(ckpt), "--private", args.private, "--artifact", str(art),
                       "--incumbent-artifact", str(incumbent), "--shipped", args.shipped, "--sparkinfer", args.sparkinfer], code, log)
+            if not (art / "holdout.json").exists():  # a crash must never read as "no holdout failure"
+                raise RuntimeError("holdout check did not produce a verdict")
         else:
             notes.append("private holdout not configured on this evaluator; result is provisional")
         frontier_json = work / "frontier.json"
