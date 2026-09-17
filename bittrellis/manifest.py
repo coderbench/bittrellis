@@ -1,27 +1,28 @@
-"""Precision manifests: the artifact miners submit.
+"""Candidate manifests: the artifact miners submit.
 
-A manifest is short rules plus optional per-unit overrides; it *expands* to one precision (and
-the quantizer that produces its bytes) per searchable unit. The expanded map, not the rules, is
-what gets hashed, built and scored, so two manifests that expand identically are the same
-candidate.
+A manifest is a default, ordered rules and per-unit overrides. It *expands* to one assignment per
+searchable unit: the stored format, the quantizer that produces its bytes (name@version and
+parameters), and the format SparkInfer executes. The expanded assignment, not the rule text, is
+hashed, built and scored, so manifests that expand identically are the same candidate.
 
-    schema: bittrellis/precision-manifest@1
+    schema: bittrellis/manifest@2
     track: HPC-01
-    name: gdn-fp8-late
-    default: NVFP4
-    quantizers:                  # default quantizer per precision (see QUANTIZERS)
-      NVFP4: baseline
-    rules:                       # applied in order; later rules override earlier ones
+    name: gdn-fp8-deep-calibrated-mlp
+    default: NVFP4                       # format for every unit not matched below
+    quantizers: {NVFP4: baseline}        # default quantizer per format (optional)
+    rules:                               # applied in order; later rules win
       - match: "L*.gdn.*"
-        layers: "40-63"
-        precision: FP8
+        layers: "32-63"
+        format: FP8
       - match: "L*.mlp"
         layers: "0-55"
-        precision: NVFP4
-        quantizer: unsloth       # optional per-rule quantizer
-    modules:                     # explicit per-unit overrides, applied last
+        format: NVFP4
+        quantizer: unsloth
+    modules:                             # exact unit overrides, applied last
       lm_head: Q4_K
-      L3.attn.o: {precision: NVFP4, quantizer: rtn}
+      L3.attn.o: {format: NVFP4, quantizer: rtn}
+
+Schema `bittrellis/precision-manifest@1` (key `precision` instead of `format`) is still read.
 """
 
 from __future__ import annotations
@@ -33,21 +34,38 @@ from pathlib import Path
 
 import yaml
 
+from . import quantizers as Q
 from .model.qwen38 import Unit, select_units
-from .precision import PRECISIONS, SPACE
+from .precision import PRECISIONS, SPACE, execution
 
-SCHEMA = "bittrellis/precision-manifest@1"
-# How the stored bytes of each precision can be produced (implemented in bittrellis/build.py).
-QUANTIZERS: dict[str, tuple[str, ...]] = {
-    "NVFP4": ("baseline", "rtn", "unsloth"),  # shipped R0 bytes · round-to-nearest · pinned R1 (GPTQ) bytes
-    "FP8": ("rtn",),
-    "Q4_K": ("runtime",),                     # stored BF16; SparkInfer fits Q4_K at load
-}
-DEFAULT_QUANTIZERS = {"NVFP4": "baseline", "FP8": "rtn", "Q4_K": "runtime"}
+SCHEMA = "bittrellis/manifest@2"
+SCHEMAS = (SCHEMA, "bittrellis/precision-manifest@1")
+DEFAULT_QUANTIZERS = dict(Q.DEFAULT_FOR_FORMAT)
 
 
 class ManifestError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class Assignment:
+    format: str                      # stored/selected format: NVFP4 | FP8 | Q4_K
+    quantizer: str                   # registry name
+    params: tuple = ()               # sorted (key, value) pairs
+
+    @property
+    def quantizer_ref(self) -> str:
+        return Q.get(self.quantizer).ref
+
+    def key(self) -> str:
+        """Canonical identity string: FORMAT@name@vN[+params-hash]."""
+        s = f"{self.format}@{self.quantizer_ref}"
+        if self.params:
+            s += "+" + hashlib.sha256(json.dumps(self.params, sort_keys=True).encode()).hexdigest()[:12]
+        return s
+
+    def label(self) -> str:
+        return self.format if self.quantizer == DEFAULT_QUANTIZERS[self.format] and not self.params else f"{self.format}@{self.quantizer}"
 
 
 @dataclass
@@ -69,7 +87,7 @@ class Manifest:
     def from_dict(cls, d: dict) -> Manifest:
         if not isinstance(d, dict):
             raise ManifestError("manifest must be a mapping")
-        if d.get("schema") != SCHEMA:
+        if d.get("schema") not in SCHEMAS:
             raise ManifestError(f"schema must be {SCHEMA!r}")
         unknown = set(d) - {"schema", "track", "name", "default", "rules", "modules", "quantizers",
                             "description", "authors", "expanded"}
@@ -86,54 +104,70 @@ class Manifest:
             quantizers=q, description=str(d.get("description", "")), authors=list(d.get("authors") or []),
         )
 
-    def expand_full(self, units: list[Unit]) -> dict[str, tuple[str, str]]:
-        """Resolve rules into {unit_id: (precision, quantizer)}; raises on anything undeployable."""
-        for p, qz in self.quantizers.items():
-            if p not in QUANTIZERS or qz not in QUANTIZERS[p]:
-                raise ManifestError(f"quantizers.{p}: {qz!r} is not one of {QUANTIZERS.get(p, ())}")
+    # ------------------------------------------------------------------ expansion
+
+    def expand_assignments(self, units: list[Unit]) -> dict[str, Assignment]:
+        for fmt, qz in self.quantizers.items():
+            if fmt not in PRECISIONS:
+                raise ManifestError(f"quantizers: unknown format {fmt!r}")
+            self._quantizer(fmt, qz, "quantizers")
         by_id = {u.id: u for u in units}
-        out: dict[str, tuple[str, str]] = {}
-        for u in units:
-            out[u.id] = self._check(u, self.default, None, "default")
+        out = {u.id: self._check(u, self.default, None, None, "default") for u in units}
         for i, rule in enumerate(self.rules):
-            if not isinstance(rule, dict) or "match" not in rule or "precision" not in rule:
-                raise ManifestError(f"rule {i} needs 'match' and 'precision'")
-            extra = set(rule) - {"match", "layers", "precision", "quantizer", "note"}
+            if not isinstance(rule, dict) or "match" not in rule or not ({"format", "precision"} & set(rule)):
+                raise ManifestError(f"rule {i} needs 'match' and 'format'")
+            extra = set(rule) - {"match", "layers", "format", "precision", "quantizer", "params", "note"}
             if extra:
                 raise ManifestError(f"rule {i} has unknown keys {sorted(extra)}")
             hits = select_units(units, str(rule["match"]), rule.get("layers"))
             if not hits:
                 raise ManifestError(f"rule {i} ({rule['match']!r}, layers={rule.get('layers')}) matches no unit")
+            fmt = rule.get("format", rule.get("precision"))
             for u in hits:
-                out[u.id] = self._check(u, rule["precision"], rule.get("quantizer"), f"rule {i}")
+                out[u.id] = self._check(u, fmt, rule.get("quantizer"), rule.get("params"), f"rule {i}")
         for uid, spec in self.modules.items():
             if uid not in by_id:
                 raise ManifestError(f"modules: unknown unit {uid!r}")
             if isinstance(spec, dict):
-                if set(spec) - {"precision", "quantizer"} or "precision" not in spec:
-                    raise ManifestError(f"modules.{uid}: use a precision string or {{precision, quantizer}}")
-                out[uid] = self._check(by_id[uid], spec["precision"], spec.get("quantizer"), f"modules.{uid}")
+                if set(spec) - {"format", "precision", "quantizer", "params"} or not ({"format", "precision"} & set(spec)):
+                    raise ManifestError(f"modules.{uid}: use a format string or {{format, quantizer, params}}")
+                out[uid] = self._check(by_id[uid], spec.get("format", spec.get("precision")), spec.get("quantizer"),
+                                       spec.get("params"), f"modules.{uid}")
             else:
-                out[uid] = self._check(by_id[uid], spec, None, f"modules.{uid}")
+                out[uid] = self._check(by_id[uid], spec, None, None, f"modules.{uid}")
         return out
 
     def expand(self, units: list[Unit]) -> dict[str, str]:
-        """{unit_id: precision}."""
-        return {k: p for k, (p, _) in self.expand_full(units).items()}
+        """{unit_id: format}."""
+        return {k: a.format for k, a in self.expand_assignments(units).items()}
 
-    def _check(self, unit: Unit, precision: str, quantizer: str | None, where: str) -> tuple[str, str]:
-        if precision not in PRECISIONS or precision not in SPACE[unit.kind]:
+    def _quantizer(self, fmt: str, name: str, where: str) -> Q.Quantizer:
+        try:
+            qz = Q.get(name)
+        except KeyError as e:
+            raise ManifestError(f"{where}: {e.args[0]}") from None
+        if fmt not in qz.formats:
+            raise ManifestError(f"{where}: quantizer {name!r} cannot produce {fmt} (it produces {qz.formats})")
+        return qz
+
+    def _check(self, unit: Unit, fmt: str, quantizer: str | None, params: dict | None, where: str) -> Assignment:
+        if fmt not in PRECISIONS or fmt not in SPACE[unit.kind]:
             raise ManifestError(
-                f"{where}: {unit.id} cannot run {precision!r} on the pinned runtime "
+                f"{where}: {unit.id} cannot run {fmt!r} on the pinned runtime "
                 f"(allowed for {unit.kind}: {', '.join(SPACE[unit.kind])})"
             )
-        qz = quantizer or self.quantizers.get(precision, DEFAULT_QUANTIZERS[precision])
-        if qz not in QUANTIZERS[precision]:
-            raise ManifestError(f"{where}: quantizer {qz!r} cannot produce {precision} (use {QUANTIZERS[precision]})")
-        return precision, qz
+        name = quantizer or self.quantizers.get(fmt, DEFAULT_QUANTIZERS[fmt])
+        qz = self._quantizer(fmt, name, where)
+        if not qz.supports(unit, fmt):
+            raise ManifestError(f"{where}: quantizer {name!r} does not support {unit.id}")
+        if params is not None and not isinstance(params, dict):
+            raise ManifestError(f"{where}: params must be a mapping")
+        return Assignment(fmt, name, tuple(sorted((params or {}).items())))
+
+    # ------------------------------------------------------------------ identity + serialization
 
     def candidate_id(self, units: list[Unit]) -> str:
-        return candidate_hash(self.track, self.expand_full(units))
+        return candidate_hash(self.track, self.expand_assignments(units))
 
     def to_dict(self, units: list[Unit] | None = None) -> dict:
         d = {
@@ -142,26 +176,33 @@ class Manifest:
             "quantizers": self.quantizers,
         }
         if units is not None:
-            d["expanded"] = {k: f"{p}@{q}" for k, (p, q) in self.expand_full(units).items()}
+            by_id = {u.id: u for u in units}
+            d["expanded"] = {
+                k: {"source_format": a.format, "quantizer": a.quantizer_ref, "params": dict(a.params),
+                    "execution": execution(by_id[k].kind, a.format)}
+                for k, a in self.expand_assignments(units).items()
+            }
         return d
 
 
-def candidate_hash(track: str, full: dict[str, tuple[str, str]]) -> str:
-    """Content address of a candidate: track + every unit's precision and quantizer."""
-    payload = {"track": track, "modules": {k: f"{p}@{q}" for k, (p, q) in sorted(full.items())}}
+def candidate_hash(track: str, assignments: dict[str, Assignment]) -> str:
+    """Content address of a candidate: track + every unit's FORMAT@quantizer@version[+params]."""
+    payload = {"track": track, "units": {k: a.key() for k, a in sorted(assignments.items())}}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
 
 
-def summarize(expanded: dict[str, str] | dict[str, tuple[str, str]], units: list[Unit]) -> dict[str, dict[str, int]]:
-    """Counts of units per (kind, precision[@quantizer]) for reports and PR descriptions."""
+def summarize(assignments: dict[str, Assignment] | dict[str, str], units: list[Unit]) -> dict[str, dict[str, int]]:
+    """Counts of units per kind and FORMAT[@quantizer] for reports and PR descriptions."""
     by_id = {u.id: u for u in units}
     out: dict[str, dict[str, int]] = {}
-    for uid, v in expanded.items():
-        if isinstance(v, str):
-            label = v
-        else:
-            label = v[0] if v[1] == DEFAULT_QUANTIZERS[v[0]] else f"{v[0]}@{v[1]}"
-        k = by_id[uid].kind
-        out.setdefault(k, {})
-        out[k][label] = out[k].get(label, 0) + 1
+    for uid, a in assignments.items():
+        label = a if isinstance(a, str) else a.label()
+        kind = by_id[uid].kind
+        out.setdefault(kind, {})
+        out[kind][label] = out[kind].get(label, 0) + 1
     return out
+
+
+def distance(a: dict[str, Assignment], b: dict[str, Assignment]) -> int:
+    """Number of units whose assignment differs; 0 means the same candidate."""
+    return sum(1 for k in a if a[k].key() != b.get(k, Assignment("", "runtime")).key()) if a else 0

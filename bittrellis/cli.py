@@ -12,106 +12,127 @@ from pathlib import Path
 import yaml
 
 from . import __version__
-from .manifest import Manifest, ManifestError, summarize
+from . import quantizers as Q
+from .manifest import Manifest, ManifestError, distance, summarize
 from .model.qwen38 import Qwen38Arch
-from .precision import SPACE, stored_bytes, stored_for, weight_bytes
+from .precision import SPACE, execution, stored_bytes, stored_for, weight_bytes
 from .track import REPO_ROOT, load_track
 
+ENV = os.environ.get
 DEFAULTS = {
-    "base": os.environ.get("BITTRELLIS_BASE", str(REPO_ROOT / "models/Qwen3.8-27B")),
-    "baseline": os.environ.get("BITTRELLIS_BASELINE", str(REPO_ROOT / "models/Qwen3.8-27B-NVFP4-RTX5090")),
-    "unsloth": os.environ.get("BITTRELLIS_UNSLOTH", str(REPO_ROOT / "models/Qwen3.8-27B-NVFP4-unsloth")),
-    "sparkinfer": os.environ.get("BITTRELLIS_SPARKINFER", str(REPO_ROOT / "third_party/sparkinfer")),
+    "base": ENV("BITTRELLIS_BASE", str(REPO_ROOT / "models/Qwen3.8-27B")),
+    "shipped": ENV("BITTRELLIS_SHIPPED", str(REPO_ROOT / "models/Qwen3.8-27B-NVFP4-RTX5090")),
+    "unsloth": ENV("BITTRELLIS_UNSLOTH", str(REPO_ROOT / "models/Qwen3.8-27B-NVFP4-unsloth")),
+    "sparkinfer": ENV("BITTRELLIS_SPARKINFER", str(REPO_ROOT / "third_party/sparkinfer")),
+    "llamacpp": ENV("BITTRELLIS_LLAMACPP", str(REPO_ROOT / "third_party/llama.cpp")),
     "corpus": str(REPO_ROOT / "data/corpus/hpc01-public-v2.json"),
-    "reference": os.environ.get("BITTRELLIS_REFERENCE", str(REPO_ROOT / "data/reference/hpc01-public-v2")),
+    "reference": ENV("BITTRELLIS_REFERENCE", str(REPO_ROOT / "data/reference/hpc01-public-v2-k256")),
 }
+SOURCE_ARGS = {"base": "base", "gittensor_nvfp4": "shipped", "unsloth_nvfp4": "unsloth"}
 GIB = 1024**3
 
 
-def _arch(args) -> Qwen38Arch:
-    cfg = Path(args.baseline) / "config.json"
-    return Qwen38Arch.from_config(cfg) if cfg.exists() else Qwen38Arch()
+def _source_dirs(args) -> dict[str, Path]:
+    return {sid: Path(getattr(args, arg)) for sid, arg in SOURCE_ARGS.items() if getattr(args, arg, None)}
+
+
+def _units(args=None):
+    cfg = Path(getattr(args, "shipped", DEFAULTS["shipped"])) / "config.json"
+    return (Qwen38Arch.from_config(cfg) if cfg.exists() else Qwen38Arch()).units()
+
+
+def _json(obj) -> None:
+    print(json.dumps(obj, indent=2))
+
+
+# ------------------------------------------------------------------ inspection
 
 
 def cmd_track(args) -> int:
-    t = load_track(args.track)
-    print(yaml.safe_dump(t.data, sort_keys=False), end="")
+    print(yaml.safe_dump(load_track(args.track).data, sort_keys=False), end="")
+    return 0
+
+
+def cmd_quantizers(args) -> int:
+    for q in Q.REGISTRY.values():
+        print(f"  {q.ref:14s} {','.join(q.formats):12s} {q.lineage:12s} {q.replay_mode:12s} {q.source_id or '':16s} {q.description}")
     return 0
 
 
 def cmd_inventory(args) -> int:
-    units = _arch(args).units()
     rows = []
-    for u in units:
+    for u in _units(args):
+        legal = []
+        for fmt in SPACE[u.kind]:
+            for q in Q.REGISTRY.values():
+                if q.supports(u, fmt):
+                    legal.append({"format": fmt, "quantizer": q.ref, "lineage": q.lineage,
+                                  "source": q.source_id, "execution": execution(u.kind, fmt)})
         rows.append({
-            "unit": u.id, "kind": u.kind, "role": u.role, "layer": u.layer,
+            "unit": u.id, "kind": u.kind, "role": u.role, "layer": u.layer, "params": u.numel,
             "tensors": [{"name": lin.prefix, "rows": lin.rows, "cols": lin.cols} for lin in u.linears],
-            "params": u.numel, "allowed": list(SPACE[u.kind]),
-            "weight_bytes": {p: weight_bytes(u, p) for p in SPACE[u.kind]},
-            "stored_bytes": {p: sum(stored_bytes(lin, stored_for(p)) for lin in u.linears) for p in SPACE[u.kind]},
+            "legal_assignments": legal,
+            "stored_bytes": {f: sum(stored_bytes(lin, stored_for(f)) for lin in u.linears) for f in SPACE[u.kind]},
+            "decode_weight_bytes": {f: weight_bytes(u, f) for f in SPACE[u.kind]},
+            "loader_constraints": {
+                "gdn": "NVFP4 native; FP8 native only with one BF16 scale per row; anything else is fit to Q4_K",
+                "attn": "NVFP4 native per tensor; anything else is fit to Q4_K",
+                "mlp": "gate/up/down share one decision keyed on gate_proj; NVFP4 gate requires NVFP4 up/down",
+                "lm_head": "batch-1 decode always executes a Q4_K fit of the stored head",
+            }[u.kind],
         })
     doc = {"track": args.track, "model": "Qwen3.8-27B", "units": rows,
            "totals": {"units": len(rows), "params": sum(r["params"] for r in rows),
                       "by_kind": {k: sum(1 for r in rows if r["kind"] == k) for k in SPACE}}}
-    text = json.dumps(doc, indent=2) + "\n"
     if args.out:
-        Path(args.out).write_text(text)
+        Path(args.out).write_text(json.dumps(doc, indent=2) + "\n")
         print(f"wrote {args.out}: {doc['totals']}")
     else:
-        print(json.dumps(doc["totals"], indent=2))
+        _json(doc["totals"])
     return 0
 
 
 def cmd_manifest(args) -> int:
     track = load_track(args.track)
-    units = _arch(args).units()
+    units = _units(args)
     by_id = {u.id: u for u in units}
+    seen: dict[str, tuple[str, dict]] = {}
+    if args.against:
+        for p in sorted(Path(args.against).glob("*.yaml")):
+            try:
+                m = Manifest.load(p)
+                seen[str(p)] = (m.candidate_id(units), m.expand_assignments(units))
+            except (ManifestError, yaml.YAMLError):
+                continue
     status = 0
     for path in args.manifests:
         try:
             m = Manifest.load(path)
             if m.track != track.id:
                 raise ManifestError(f"manifest track {m.track} != {track.id}")
-            exp = m.expand(units)
+            asg = m.expand_assignments(units)
         except (ManifestError, OSError, yaml.YAMLError) as e:
             print(f"✗ {path}: {e}")
             status = 1
             continue
-        full = m.expand_full(units)
-        est = sum(weight_bytes(by_id[k], p) for k, p in exp.items()) / GIB
-        disk = sum(stored_bytes(lin, stored_for(p)) for k, p in exp.items() for lin in by_id[k].linears) / GIB
-        print(f"✓ {path}: {m.name}  id={m.candidate_id(units)}")
-        for kind, counts in summarize(full, units).items():
+        cid = m.candidate_id(units)
+        est = sum(weight_bytes(by_id[k], a.format) for k, a in asg.items()) / GIB
+        print(f"✓ {path}: {m.name}  id={cid}")
+        for kind, counts in summarize(asg, units).items():
             print(f"    {kind:8s} " + "  ".join(f"{p}×{n}" for p, n in sorted(counts.items())))
-        print(f"    searchable decode weights ≈ {est:.2f} GiB, stored Linears ≈ {disk:.2f} GiB (estimate)")
+        print(f"    decode weights ≈ {est:.2f} GiB (estimate; peak GPU memory is measured)")
+        for other, (ocid, oasg) in seen.items():
+            if Path(other).resolve() == Path(path).resolve():
+                continue
+            d = distance(asg, oasg)
+            if d == 0:
+                print(f"    ✗ duplicate of {other} (same candidate id {ocid})")
+                status = 1
+            elif d <= args.min_distance:
+                print(f"    ! near-duplicate of {other}: only {d} unit(s) differ")
         if args.expand:
-            print(json.dumps({k: f"{p}@{q}" for k, (p, q) in full.items()}, indent=1))
+            _json(m.to_dict(units)["expanded"])
     return status
-
-
-def cmd_build(args) -> int:
-    from .build import build
-
-    track = load_track(args.track)
-    m = Manifest.load(args.manifest)
-    out = Path(args.out) if args.out else REPO_ROOT / "models/candidates" / f"{m.name}-{m.candidate_id(_arch(args).units())}"
-    build(m, track, Path(args.base), Path(args.baseline), out, sources={"unsloth": Path(args.unsloth)})
-    print(out)
-    return 0
-
-
-def cmd_audit(args) -> int:
-    from .validate import audit
-
-    m = Manifest.load(args.manifest) if args.manifest else Manifest.load(Path(args.checkpoint) / "precision_manifest.yaml")
-    res = audit(args.checkpoint, m, args.base, args.baseline, check_bytes=not args.fast, check_fidelity=not args.fast)
-    d = res.to_dict()
-    if args.out:
-        Path(args.out).write_text(json.dumps(d, indent=2) + "\n")
-    for e in res.errors[:30]:
-        print(f"  ✗ {e}")
-    print("AUDIT PASS" if res.ok else f"AUDIT FAIL ({len(res.errors)} errors)")
-    return 0 if res.ok else 1
 
 
 def cmd_describe(args) -> int:
@@ -126,6 +147,52 @@ def cmd_describe(args) -> int:
     if args.out:
         Path(args.out).write_text(json.dumps(labels, indent=1) + "\n")
     return 0
+
+
+def cmd_verify_sources(args) -> int:
+    from .lineage import verify_source
+
+    dirs = _source_dirs(args)
+    ok = True
+    for sid in args.source or sorted(dirs):
+        res = verify_source(sid, dirs[sid], log=print)
+        ok &= res.ok
+        print(f"{'✓' if res.ok else '✗'} {sid}: {res.checked} hashed, {res.cached} cached" + (f"; {res.errors}" if res.errors else ""))
+    return 0 if ok else 1
+
+
+# ------------------------------------------------------------------ build + audit
+
+
+def cmd_build(args) -> int:
+    from .build import build
+
+    track = load_track(args.track)
+    m = Manifest.load(args.manifest)
+    out = Path(args.out) if args.out else REPO_ROOT / "models/candidates" / f"{m.name}-{m.candidate_id(_units(args))}"
+    build(m, track, _source_dirs(args), out, verify=not args.no_verify)
+    print(out)
+    return 0
+
+
+def cmd_audit(args) -> int:
+    from .validate import audit
+
+    m = Manifest.load(args.manifest or Path(args.checkpoint) / "precision_manifest.yaml")
+    res = audit(args.checkpoint, m, _source_dirs(args), check_bytes=not args.fast, verify_sources=not args.fast, log=print)
+    if args.out:
+        build_rec = Path(args.checkpoint) / "bittrellis_build.json"
+        files = json.loads(build_rec.read_text())["files"] if build_rec.exists() else None
+        Path(args.out).write_text(json.dumps({**res.to_dict(), "fast": args.fast, "checkpoint_files": files}, indent=2) + "\n")
+    for e in res.errors[:30]:
+        print(f"  ✗ {e}")
+    for w in res.warnings[:10]:
+        print(f"  ! {w}")
+    print("AUDIT PASS" if res.ok else f"AUDIT FAIL ({len(res.errors)} errors)")
+    return 0 if res.ok else 1
+
+
+# ------------------------------------------------------------------ evaluation
 
 
 def cmd_corpus(args) -> int:
@@ -144,80 +211,147 @@ def cmd_corpus(args) -> int:
 def cmd_reference(args) -> int:
     from .eval.corpus import load_corpus
     from .eval.reference import build_reference
+    from .lineage import require_verified
 
-    build_reference(Path(args.base), load_corpus(Path(args.corpus)), Path(args.out), gpu_gib=args.gpu_gib)
+    track = load_track(args.track)
+    require_verified("base", args.base, log=print)
+    corpus = load_corpus(Path(args.corpus))
+    build_reference(Path(args.base), corpus, Path(args.out), topk=track["evaluation"]["score"]["reference_topk"],
+                    gpu_gib=args.gpu_gib)
+    return 0
+
+
+def _identity(args, track, ckpt: Path) -> dict | None:
+    from .eval.candidate import checkpoint_bytes
+    from .validate import audit, describe
+
+    if args.external:
+        ref = track["external_references"][args.external]
+        ident = {"id": args.external, "name": ref["name"], "kind": "external", "source": ref.get("source")}
+    else:
+        m = Manifest.load(ckpt / "precision_manifest.yaml")
+        units = Qwen38Arch.from_config(ckpt / "config.json").units()
+        ident = {"id": m.candidate_id(units), "name": m.name, "kind": "internal", "manifest": m.to_dict(units),
+                 "build": json.loads((ckpt / "bittrellis_build.json").read_text())}
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        files = ident["build"]["files"]
+        prior = json.loads(Path(args.audit_json).read_text()) if getattr(args, "audit_json", None) else None
+        if prior is not None and prior.get("fast") is False and prior.get("checkpoint_files") == files:
+            audit_doc = prior  # audited earlier on exactly these shard bytes (pipelined maintainer runs)
+        else:
+            res = audit(ckpt, m, _source_dirs(args), check_bytes=True, verify_sources=True, log=print)
+            audit_doc = {**res.to_dict(), "candidate_id": ident["id"], "checkpoint_files": files}
+        (out / "audit.json").write_text(json.dumps(audit_doc, indent=2) + "\n")
+        ident["audit_ok"] = audit_doc["ok"]
+        if not audit_doc["ok"]:
+            print("AUDIT FAIL — not evaluating:", *audit_doc["errors"][:10], sep="\n  ")
+            (out / "candidate.json").write_text(json.dumps(ident, indent=2) + "\n")
+            return None
+    ident["executed_formats"] = describe(ckpt)
+    ident["checkpoint_bytes"] = checkpoint_bytes(ckpt)
+    return ident
+
+
+def _evaluate(args, stages: tuple[str, ...]) -> int:
+    from .eval.candidate import evaluate
+    from .eval.corpus import load_corpus
+    from .runtime import SparkInfer
+
+    track = load_track(args.track)
+    ckpt = Path(args.checkpoint)
+    identity = _identity(args, track, ckpt)
+    if identity is None:
+        return 1
+    si = SparkInfer(args.sparkinfer, track)
+    evaluate(track, si, ckpt, Path(args.out), load_corpus(Path(args.corpus)), Path(args.reference), identity, stages)
+    print(f"wrote {args.out}")
     return 0
 
 
 def cmd_evaluate(args) -> int:
-    from .eval.candidate import checkpoint_bytes, evaluate
-    from .eval.corpus import load_corpus
-    from .runtime import SparkInfer
-    from .validate import audit, describe
+    return _evaluate(args, tuple(s for s in args.stages.split(",") if s))
 
-    track = load_track(args.track)
-    ckpt = Path(args.checkpoint)
-    corpus = load_corpus(Path(args.corpus))
-    si = SparkInfer(args.sparkinfer, track)
-    if args.reference_id:
-        ref = track["references"][args.reference_id]
-        identity = {"id": args.reference_id, "name": ref["name"], "kind": "reference",
-                    "repo": ref.get("repo"), "revision": ref.get("revision")}
-        audit_ok = None
-    else:
-        m = Manifest.load(ckpt / "precision_manifest.yaml")
-        units = Qwen38Arch.from_config(ckpt / "config.json").units()
-        identity = {"id": m.candidate_id(units), "name": m.name, "kind": "candidate",
-                    "manifest": m.to_dict(units), "build": json.loads((ckpt / "bittrellis_build.json").read_text())}
-        res = audit(ckpt, m, args.base, args.baseline, check_bytes=not args.fast_audit, check_fidelity=True)
-        out = Path(args.out)
-        out.mkdir(parents=True, exist_ok=True)
-        (out / "audit.json").write_text(json.dumps(res.to_dict(), indent=2) + "\n")
-        audit_ok = res.ok
-        if not res.ok:
-            print("AUDIT FAIL — not evaluating:", *res.errors[:10], sep="\n  ")
-            return 1
-    identity["runtime_precision"] = describe(ckpt)
-    identity["checkpoint_bytes"] = checkpoint_bytes(ckpt)
-    identity["audit_ok"] = audit_ok
-    stages = tuple(s for s in args.stages.split(",") if s)
-    evaluate(track, si, ckpt, Path(args.out), corpus, Path(args.reference), identity, stages)
-    print(f"wrote {args.out}")
-    return 0
+
+def cmd_evaluate_public(args) -> int:
+    return _evaluate(args, ("quality",))
+
+
+def cmd_benchmark(args) -> int:
+    return _evaluate(args, ("performance",))
 
 
 def cmd_evaluate_llamacpp(args) -> int:
     from .eval.corpus import load_corpus
     from .eval.llamacpp import evaluate_llamacpp
+    from .lineage import require_verified
 
     track = load_track(args.track)
-    evaluate_llamacpp(track, args.reference_id, Path(args.llamacpp), Path(args.gguf), load_corpus(Path(args.corpus)),
-                      Path(args.reference), Path(args.out))
+    gguf = Path(args.gguf)
+    require_verified("unsloth_gguf", gguf.parent, log=print)
+    evaluate_llamacpp(track, "R2", Path(args.llamacpp), gguf, load_corpus(Path(args.corpus)), Path(args.reference), Path(args.out))
     print(f"wrote {args.out}")
     return 0
 
 
-def cmd_frontier(args) -> int:
-    from .frontier.report import load_rows, render_table, write_frontier
+def cmd_holdout(args) -> int:
+    from . import holdout
+    from .runtime import SparkInfer
 
     track = load_track(args.track)
-    rows = load_rows([Path(p) for p in args.artifacts], track)
+    if args.action == "build":
+        c = holdout.build_private_corpus(Path(args.private), Path(args.shipped) / "tokenizer.json")
+        print(f"private holdout {c['version']}: {len(c['streams'])} streams, sha256 {c['sha256'][:16]}")
+        return 0
+    verdict = holdout.check(SparkInfer(args.sparkinfer, track), track, Path(args.checkpoint), Path(args.artifact),
+                            Path(args.private), Path(args.shipped), Path(args.incumbent_artifact))
+    print(f"HOLDOUT {verdict}")
+    return 0 if verdict == "PASS" else 1
+
+
+def cmd_frontier(args) -> int:
+    from .frontier.report import load_rows, render_table, seed_rows, write_frontier
+
+    track = load_track(args.track)
+    paths = [Path(p) for p in args.artifacts] + (seed_rows(track) if args.with_seeds else [])
+    rows, _ = load_rows(paths, track)
     doc = write_frontier(rows, track, Path(args.out) if args.out else None)
     print(render_table(rows))
-    print(f"\n{len(doc['frontier'])} on the frontier (FG version {doc['frontier_gain_version']})")
+    print(f"{len(doc['frontier'])} on the internal frontier ({doc['frontier_gain_version']}, epoch {doc['evaluator_epoch']})")
+    return 0
+
+
+def cmd_compare(args) -> int:
+    from .frontier.report import compare
+
+    _json(compare(Path(args.a), Path(args.b), load_track(args.track)))
     return 0
 
 
 def cmd_report(args) -> int:
-    from .frontier.report import feasibility_report
+    from .frontier.report import write_report
 
-    track = load_track(args.track)
-    path = feasibility_report([Path(p) for p in args.artifacts], track, Path(args.out))
-    print(f"wrote {path}")
+    print(f"wrote {write_report([Path(p) for p in args.artifacts], load_track(args.track), Path(args.out))}")
+    return 0
+
+
+def cmd_search(args) -> int:
+    from .search import neighbors
+
+    base = Manifest.load(args.manifest)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    made = neighbors(base, _units(args), limit=args.limit)
+    for m in made:
+        (out / f"{m.name}.yaml").write_text(yaml.safe_dump(m.to_dict(), sort_keys=False))
+    print(f"wrote {len(made)} neighbor manifests to {out}")
     return 0
 
 
 def cmd_doctor(args) -> int:
+    from .lineage import verify_source
+    from .runtime import RuntimeError_, SparkInfer
+
     track = load_track(args.track)
     ok = True
 
@@ -226,29 +360,26 @@ def cmd_doctor(args) -> int:
         ok &= good
         print(f"  {'✓' if good else '✗'} {name}{(' — ' + detail) if detail else ''}")
 
-    print(f"bittrellis {__version__} · track {track.id}")
+    print(f"bittrellis {__version__} · track {track.id} · epoch {track['evaluation']['epoch']}")
     check("nvidia-smi", shutil.which("nvidia-smi") is not None)
-    for key in ("base", "baseline"):
-        p = Path(getattr(args, key))
-        check(f"{key} checkpoint", (p / "config.json").exists(), str(p))
-    si = Path(args.sparkinfer)
-    if (si / ".git").exists():
-        from .runtime import RuntimeError_, SparkInfer
-
-        try:
-            SparkInfer(si, track).check_pinned()
-            check("SparkInfer pinned + built", True, track["runtime"]["commit"][:12])
-        except RuntimeError_ as e:
-            check("SparkInfer pinned + built", False, str(e))
-    else:
-        check("SparkInfer checkout", False, f"{si} (run scripts/setup_sparkinfer.sh)")
-    check("corpus", Path(args.corpus).exists(), args.corpus)
+    for sid, d in _source_dirs(args).items():
+        if not (d / "config.json").exists():
+            check(f"source {sid}", False, f"{d} missing")
+            continue
+        res = verify_source(sid, d, files=["config.json"])
+        check(f"source {sid}", res.ok, f"{d} (weights are hash-verified on first build/audit)")
+    try:
+        SparkInfer(args.sparkinfer, track).check_pinned()
+        check("SparkInfer pinned + built", True, track["runtime"]["commit"][:12])
+    except (RuntimeError_, OSError) as e:
+        check("SparkInfer pinned + built", False, str(e)[:120])
+    check("public corpus", Path(args.corpus).exists(), args.corpus)
     check("BF16 reference", (Path(args.reference) / "reference.json").exists(), args.reference)
     return 0 if ok else 1
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="bittrellis", description="Find the precision map the hardware actually wants.")
+    ap = argparse.ArgumentParser(prog="bittrellis", description="Search the best quantization topology for an LLM on real hardware.")
     ap.add_argument("--version", action="version", version=__version__)
     ap.add_argument("--track", default="HPC-01")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -257,82 +388,78 @@ def main(argv: list[str] | None = None) -> int:
         for k in keys:
             p.add_argument(f"--{k}", default=DEFAULTS[k])
 
-    p = sub.add_parser("doctor", help="check the environment against the track pins")
-    paths(p, "base", "baseline", "sparkinfer", "corpus", "reference")
-    p.set_defaults(fn=cmd_doctor)
+    def sp(name: str, fn, help_: str, *keys):
+        p = sub.add_parser(name, help=help_)
+        paths(p, *keys)
+        p.set_defaults(fn=fn)
+        return p
 
-    p = sub.add_parser("track", help="print the pinned track definition")
-    p.set_defaults(fn=cmd_track)
-
-    p = sub.add_parser("inventory", help="list every searchable unit, its shapes and legal precisions")
-    paths(p, "baseline")
+    sp("doctor", cmd_doctor, "check the environment against the track pins", "base", "shipped", "unsloth", "sparkinfer", "corpus", "reference")
+    sp("track", cmd_track, "print the pinned track definition")
+    sp("quantizers", cmd_quantizers, "list registered quantizers, their formats and lineage")
+    p = sp("inventory", cmd_inventory, "every searchable unit: tensors, legal assignments, executed formats", "shipped")
     p.add_argument("--out")
-    p.set_defaults(fn=cmd_inventory)
-
-    p = sub.add_parser("manifest", help="validate manifests and show what they expand to")
-    paths(p, "baseline")
+    p = sp("manifest", cmd_manifest, "validate manifests; show assignments, id and duplicates", "shipped")
     p.add_argument("manifests", nargs="+")
-    p.add_argument("--expand", action="store_true", help="print the full unit → precision map")
-    p.set_defaults(fn=cmd_manifest)
-
-    p = sub.add_parser("build", help="build a deployable checkpoint from a manifest (CPU only)")
-    paths(p, "base", "baseline", "unsloth")
+    p.add_argument("--expand", action="store_true")
+    p.add_argument("--against", help="directory of existing manifests to check for duplicates")
+    p.add_argument("--min-distance", type=int, default=2, help="warn when this few units differ")
+    p = sp("verify-sources", cmd_verify_sources, "hash-verify local source checkouts against the lock", "base", "shipped", "unsloth")
+    p.add_argument("--source", action="append")
+    p = sp("describe", cmd_describe, "what SparkInfer executes for any checkpoint")
+    p.add_argument("checkpoint")
+    p.add_argument("--out")
+    p = sp("build", cmd_build, "build a deployable checkpoint from a manifest (CPU only)", "base", "shipped", "unsloth")
     p.add_argument("manifest")
     p.add_argument("--out")
-    p.set_defaults(fn=cmd_build)
-
-    p = sub.add_parser("audit", help="check a built checkpoint against the HPC-01 rules")
-    paths(p, "base", "baseline")
+    p.add_argument("--no-verify", action="store_true", help="skip source hash verification (development only)")
+    p = sp("audit", cmd_audit, "HPC-01 rule and lineage checks for a built checkpoint", "base", "shipped", "unsloth")
     p.add_argument("checkpoint")
     p.add_argument("--manifest")
-    p.add_argument("--fast", action="store_true", help="skip byte hashing and fidelity sampling")
+    p.add_argument("--fast", action="store_true", help="skip byte and source hashing (development only)")
     p.add_argument("--out")
-    p.set_defaults(fn=cmd_audit)
-
-    p = sub.add_parser("describe", help="show what precision SparkInfer executes for any checkpoint")
-    p.add_argument("checkpoint")
-    p.add_argument("--out")
-    p.set_defaults(fn=cmd_describe)
-
-    p = sub.add_parser("corpus", help="build or verify the evaluation corpus")
+    p = sp("corpus", cmd_corpus, "build or verify the public corpus")
     p.add_argument("action", choices=["build", "verify"])
     p.add_argument("--out", default=DEFAULTS["corpus"])
     p.add_argument("--cache", default=str(REPO_ROOT / "data/cache"))
-    p.add_argument("--split", default="public", choices=["public", "holdout"])
-    p.set_defaults(fn=cmd_corpus)
-
-    p = sub.add_parser("reference", help="compute BF16 reference distributions (transformers, GPU+CPU)")
-    paths(p, "base", "corpus")
+    p.add_argument("--split", default="public", choices=["public", "public-validation"])
+    p = sp("reference", cmd_reference, "BF16 reference distributions on the fixed partition (once per corpus)", "base", "corpus")
     p.add_argument("--out", default=DEFAULTS["reference"])
-    p.add_argument("--gpu-gib", type=int, default=22)
-    p.set_defaults(fn=cmd_reference)
-
-    p = sub.add_parser("evaluate", help="audit, score, benchmark and task-check one checkpoint")
-    paths(p, "base", "baseline", "sparkinfer", "corpus", "reference")
-    p.add_argument("checkpoint")
-    p.add_argument("--out", required=True)
-    p.add_argument("--reference-id", help="evaluate an external reference (R0, R1, ...) instead of a candidate")
-    p.add_argument("--stages", default="quality,performance,tasks")
-    p.add_argument("--fast-audit", action="store_true")
-    p.set_defaults(fn=cmd_evaluate)
-
-    p = sub.add_parser("evaluate-llamacpp", help="measure a GGUF reference point through pinned llama.cpp")
-    paths(p, "corpus", "reference")
-    p.add_argument("--reference-id", default="R2")
+    p.add_argument("--gpu-gib", type=int, default=14)
+    for name, fn, help_ in (("evaluate", cmd_evaluate, "audit + public fidelity + tasks + performance"),
+                            ("evaluate-public", cmd_evaluate_public, "audit + public fidelity (RP-KL, long-context guard)"),
+                            ("benchmark", cmd_benchmark, "audit + decode, 4K prefill and peak memory (2 runs)")):
+        p = sp(name, fn, help_, "base", "shipped", "unsloth", "sparkinfer", "corpus", "reference")
+        p.add_argument("checkpoint")
+        p.add_argument("--out", required=True)
+        p.add_argument("--external", help="evaluate an external reference (R1) instead of a candidate")
+        p.add_argument("--audit-json", help="reuse a full audit of the same checkpoint files (from `bittrellis audit --out`)")
+        if name == "evaluate":
+            p.add_argument("--stages", default="quality,tasks,performance")
+    p = sp("evaluate-llamacpp", cmd_evaluate_llamacpp, "external reference R2 through pinned llama.cpp", "llamacpp", "corpus", "reference")
     p.add_argument("--gguf", default=str(REPO_ROOT / "models/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_M.gguf"))
-    p.add_argument("--llamacpp", default=os.environ.get("BITTRELLIS_LLAMACPP", str(REPO_ROOT / "third_party/llama.cpp")))
     p.add_argument("--out", required=True)
-    p.set_defaults(fn=cmd_evaluate_llamacpp)
-
-    p = sub.add_parser("frontier", help="gate, rank and compute Frontier Gain over artifact directories")
-    p.add_argument("artifacts", nargs="+")
+    p = sp("holdout", cmd_holdout, "validators: build the private holdout or check a candidate (PASS/FAIL)", "shipped", "sparkinfer")
+    p.add_argument("action", choices=["build", "check"])
+    p.add_argument("--private", required=True)
+    p.add_argument("checkpoint", nargs="?")
+    p.add_argument("--artifact")
+    p.add_argument("--incumbent-artifact")
+    p = sp("frontier", cmd_frontier, "gate and rank the internal frontier; FG-2")
+    p.add_argument("artifacts", nargs="*")
+    p.add_argument("--with-seeds", action="store_true", help="include the track's seed artifacts")
     p.add_argument("--out")
-    p.set_defaults(fn=cmd_frontier)
-
-    p = sub.add_parser("report", help="write the feasibility report")
+    p = sp("compare", cmd_compare, "paired comparison of two artifacts")
+    p.add_argument("a")
+    p.add_argument("b")
+    p = sp("report", cmd_report, "frontier.json, comparison.csv, plots")
     p.add_argument("artifacts", nargs="+")
     p.add_argument("--out", default=str(REPO_ROOT / "results/feasibility"))
-    p.set_defaults(fn=cmd_report)
+    p = sp("search", cmd_search, "baseline search helpers", "shipped")
+    p.add_argument("action", choices=["neighbors"])
+    p.add_argument("manifest")
+    p.add_argument("--out", required=True)
+    p.add_argument("--limit", type=int, default=0)
 
     args = ap.parse_args(argv)
     return args.fn(args)

@@ -51,6 +51,7 @@ class Resolved:
 
     @property
     def label(self) -> str:
+        """The unit's selected format as a manifest names it (lm_head: its stored format)."""
         if self.precision is None:
             return "LOAD-ERROR"
         if self.precision == Q4_K and self.source != S_BF16:
@@ -112,9 +113,23 @@ def resolve(unit: Unit, stored: list[str]) -> Resolved:
     if kind == "lm_head":
         s = stored[0]
         if s == S_NVFP4:
-            return Resolved(NVFP4, s, "AR decode reads a Q4_K fit of these bytes; NVFP4 copy serves packed batches")
+            return Resolved(NVFP4, s, "batch-1 decode executes a Q4_K fit of these bytes; NVFP4 copy serves packed batches")
         return Resolved(Q4_K, s)
     raise ValueError(kind)
+
+
+def execution(kind: str, fmt: str) -> dict[str, str]:
+    """What SparkInfer executes for a unit kind whose selected (stored) format is `fmt`.
+
+    Batch-1 decode is the official path. The lm_head is the one unit with conditional semantics:
+    AR decode always reads a Q4_K fit of the stored head; a stored NVFP4 head is additionally kept
+    as an NVFP4 operand for wide packed decode, and only when >= 3 GiB of VRAM is free at load.
+    """
+    if kind == "lm_head":
+        if fmt == NVFP4:
+            return {"decode_b1": "Q4_K(nvfp4)", "packed_wide": "NVFP4 if free VRAM at load > payload + 3 GiB, else Q4_K(nvfp4)"}
+        return {"decode_b1": "Q4_K", "packed_wide": "Q4_K"}
+    return {"decode_b1": fmt, "packed_wide": fmt}
 
 
 def stored_for(precision: str) -> str:

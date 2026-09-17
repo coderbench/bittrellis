@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build llama.cpp at the pinned commit plus tools/llamacpp_score.cpp (reference R2 only).
+# Build llama.cpp at the pinned commit plus tools/llamacpp_score.cpp (external reference R2 only).
 set -euo pipefail
 source "$(dirname "$0")/_pins.sh"
 if [ ! -d "$LLAMACPP_DIR/.git" ]; then

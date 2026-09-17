@@ -1,0 +1,266 @@
+{
+ "schema": "bittrellis/sources-lock@1",
+ "note": "Generated from the Hugging Face API at the pinned revisions. LFS files are pinned by sha256, small files by git blob id.",
+ "sources": {
+  "base": {
+   "repo": "Qwen/Qwen3.8-27B",
+   "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+   "role": "canonical BF16 weights (frozen source of truth)",
+   "files": {
+    "LICENSE": {
+     "size": 11544,
+     "git_blob": "f938136e3adacfd92be087f6e113b5d6d97f678f"
+    },
+    "chat_template.jinja": {
+     "size": 8952,
+     "git_blob": "c0c686f9c38d70d179fb7b5f5aa7530bc913dda3"
+    },
+    "config.json": {
+     "size": 4312,
+     "git_blob": "706cebd746c4b6f2b1d1f892630867acfdfd3df8"
+    },
+    "crc32.txt": {
+     "size": 238,
+     "git_blob": "6de5ee6a0c6596744baee911af0a5cdcb8d99a1e"
+    },
+    "generation_config.json": {
+     "size": 202,
+     "git_blob": "023756cfadf88e5bf69eefeee3e172f38c448d64"
+    },
+    "merges.txt": {
+     "size": 3353259,
+     "git_blob": "a494e019ca1502219fd0128658b979e5f05ae8e8"
+    },
+    "model-00001-of-00018.safetensors": {
+     "size": 3966730552,
+     "sha256": "ba0ce20aae489ad196733da5064bcdf159a1fe84f53336648196e1ebb7751b1c"
+    },
+    "model-00002-of-00018.safetensors": {
+     "size": 3043080328,
+     "sha256": "06a148c01bfbe3faa14a5f184a7ff29a706f7ae1c8b2705d2058e26d17a001fb"
+    },
+    "model-00003-of-00018.safetensors": {
+     "size": 2542796952,
+     "sha256": "2e1bf62cbcd406eaa64b60d10353e1f0ef4039d0976e56f05cabe953454f9968"
+    },
+    "model-00004-of-00018.safetensors": {
+     "size": 3988973152,
+     "sha256": "511e34063187882659753c4d93f3859f93c019fd438d8813071921c81d9a3f1a"
+    },
+    "model-00005-of-00018.safetensors": {
+     "size": 2099339864,
+     "sha256": "635cb53446dc74f219740fc59e18b774f877b803b9722e289ca62575a6efa701"
+    },
+    "model-00006-of-00018.safetensors": {
+     "size": 3979553696,
+     "sha256": "0bc5214fac607f0e6cc92eec3789d4b8559410ef9fce66621ba8158e8410dae0"
+    },
+    "model-00007-of-00018.safetensors": {
+     "size": 2108759344,
+     "sha256": "80b0c49033e9a0d5762562aa12f4acdb7f54da586f3d0110f28c48d91cf07892"
+    },
+    "model-00008-of-00018.safetensors": {
+     "size": 3979553696,
+     "sha256": "7192c5b66185d3592927daabee1cc19e6f6e0ce75988ee20e824b624765fda79"
+    },
+    "model-00009-of-00018.safetensors": {
+     "size": 2108759344,
+     "sha256": "af3c48cc37af44f3db6ae0579baf019180d48d9c527caa0a1f03ff85813a56d8"
+    },
+    "model-00010-of-00018.safetensors": {
+     "size": 3979553696,
+     "sha256": "163490a76f3bea3a40855b7efc04ce6d27afaf1a34f0bbde495b9491f76457c9"
+    },
+    "model-00011-of-00018.safetensors": {
+     "size": 2108759344,
+     "sha256": "5f3ae1b948aeee39da77aec558e8236cd65fe4d7cb7686a76bb007acc563c6d8"
+    },
+    "model-00012-of-00018.safetensors": {
+     "size": 3979553696,
+     "sha256": "a3de1c7114677a8f5ac5c4892c90e8238ea5c1e2038c80e757dfc87c3902ca55"
+    },
+    "model-00013-of-00018.safetensors": {
+     "size": 2108759344,
+     "sha256": "06ab79a41f74c9c5cb734816feb0c7fc364104b227165ee7391231e1155aa02a"
+    },
+    "model-00014-of-00018.safetensors": {
+     "size": 3979553696,
+     "sha256": "4138ed94603065ba884bbcadedb04d7718bb40117e85e6f5c6fc5b9c05b7a85b"
+    },
+    "model-00015-of-00018.safetensors": {
+     "size": 2108759344,
+     "sha256": "69224e27b9de4e7dbf6fc936c6eaae08447bda3b80a6c31a871ab451173afd22"
+    },
+    "model-00016-of-00018.safetensors": {
+     "size": 3979564040,
+     "sha256": "73cb9a1089fb6155cb648609478d6633be8a5c7d9ca5a05bc8925ce8a553cefe"
+    },
+    "model-00017-of-00018.safetensors": {
+     "size": 2108759344,
+     "sha256": "beb51f01056142ac4984bd800507b0dd0fd18de57f8e9ef6ea41d1a3598983a8"
+    },
+    "model-00018-of-00018.safetensors": {
+     "size": 3392197344,
+     "sha256": "1d3479509e21494658f9b64d317f5ea8e55c4025d28c702d6c4d0b356ce8ea06"
+    },
+    "model.safetensors.index.json": {
+     "size": 112216,
+     "git_blob": "da35e3c564457dface7d138f0b6cac284ff8958c"
+    },
+    "preprocessor_config.json": {
+     "size": 390,
+     "git_blob": "2ea84a437d448ff71b08df68fdd949d5cc4ebb64"
+    },
+    "tokenizer.json": {
+     "size": 12809320,
+     "sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3"
+    },
+    "tokenizer_config.json": {
+     "size": 17928,
+     "git_blob": "5de744b3fca2129d7186979ae47c06be33903243"
+    },
+    "video_preprocessor_config.json": {
+     "size": 385,
+     "git_blob": "3ba673a5ad7d4d13f54155ecd38b2a94a6dac8fe"
+    },
+    "vocab.json": {
+     "size": 6722759,
+     "git_blob": "0aa0ce0658d60ac4a5d609f4eadb0e8e43514176"
+    }
+   }
+  },
+  "gittensor_nvfp4": {
+   "repo": "gittensor-model-hub/Qwen3.8-27B-NVFP4-RTX5090",
+   "revision": "5b7a687fc8211a5d631c8ca6a593dd37eb26ce33",
+   "role": "attested: shipped NVFP4 bytes and every non-searchable tensor (V0)",
+   "files": {
+    "LICENSE": {
+     "size": 11544,
+     "git_blob": "f938136e3adacfd92be087f6e113b5d6d97f678f"
+    },
+    "chat_template.jinja": {
+     "size": 14221,
+     "git_blob": "170b686aa4bd0297644b8b82062258430cc23f77"
+    },
+    "config.json": {
+     "size": 13167,
+     "git_blob": "f32213e8896318c1260a9444618a142e61c299b7"
+    },
+    "crc32.txt": {
+     "size": 86,
+     "git_blob": "caa6b4c9dd44a6722c6e83b21c970f733653826d"
+    },
+    "generation_config.json": {
+     "size": 213,
+     "git_blob": "d04042de33b454891a0b8fa98e00da677799f30e"
+    },
+    "hf_quant_config.json": {
+     "size": 9050,
+     "git_blob": "9811313d247527987787e5664d4c91148401abf0"
+    },
+    "merges.txt": {
+     "size": 3353259,
+     "git_blob": "a494e019ca1502219fd0128658b979e5f05ae8e8"
+    },
+    "model-00001-of-00002.safetensors": {
+     "size": 9972777720,
+     "sha256": "cdd37b0e61eccc8a3d7d08f9d1a4f52856a9d88e4e8b42089bd18a970e3a01ec"
+    },
+    "model-00002-of-00002.safetensors": {
+     "size": 7943334864,
+     "sha256": "713b84b8287e2193290214766c5384fa6475c5626a628e4021c2c9ca90aa61df"
+    },
+    "model.safetensors.index.json": {
+     "size": 236508,
+     "git_blob": "1f50369484ac7e04b6f867ab5164901c4f363a62"
+    },
+    "preprocessor_config.json": {
+     "size": 390,
+     "git_blob": "2ea84a437d448ff71b08df68fdd949d5cc4ebb64"
+    },
+    "processor_config.json": {
+     "size": 1191,
+     "git_blob": "33818c7f9e991ad735fd240209f4fa73e6c28c50"
+    },
+    "tokenizer.json": {
+     "size": 12809320,
+     "sha256": "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3"
+    },
+    "tokenizer_config.json": {
+     "size": 1150,
+     "git_blob": "c240896a366de8a9c55db520bf005d87add55b5b"
+    },
+    "video_preprocessor_config.json": {
+     "size": 385,
+     "git_blob": "3ba673a5ad7d4d13f54155ecd38b2a94a6dac8fe"
+    },
+    "vocab.json": {
+     "size": 6722759,
+     "git_blob": "0aa0ce0658d60ac4a5d609f4eadb0e8e43514176"
+    }
+   }
+  },
+  "unsloth_nvfp4": {
+   "repo": "unsloth/Qwen3.8-27B-NVFP4",
+   "revision": "f0b7c9e722f5565102fff8481c99e4d86ae099c7",
+   "role": "attested: calibrated NVFP4 MLP bytes, layers 0-55",
+   "files": {
+    "chat_template.jinja": {
+     "size": 9993,
+     "git_blob": "a087700658910c336c9ca9f5780a75a3cdd4fcdd"
+    },
+    "config.json": {
+     "size": 22564,
+     "git_blob": "b6f6347774036d406eabed6cfffb0fec424ba075"
+    },
+    "generation_config.json": {
+     "size": 214,
+     "git_blob": "0bc3addd19dc59c5c8899fc1fb887d50b592e7c3"
+    },
+    "model.safetensors": {
+     "size": 22568192096,
+     "sha256": "c473512c70eace07e2256fe9fd76596ac03e3295bee7d54cfb72676416afcc05"
+    },
+    "model.safetensors.index.json": {
+     "size": 164371,
+     "git_blob": "7608ff001dbfc8936318df32aaaaef7c8c9f340d"
+    },
+    "model_mtp.safetensors": {
+     "size": 849400392,
+     "sha256": "1d8268aa85ace093a561e3e7b63b9d390dac1cd55a90cd55b5ec509c3c9da9fe"
+    },
+    "preprocessor_config.json": {
+     "size": 390,
+     "git_blob": "2ea84a437d448ff71b08df68fdd949d5cc4ebb64"
+    },
+    "tokenizer.json": {
+     "size": 19989325,
+     "sha256": "06b9509352d2af50381ab2247e083b80d32d5c0aba91c272ca9ff729b6a0e523"
+    },
+    "tokenizer_config.json": {
+     "size": 1047,
+     "git_blob": "088fbebf189b39e2dabcdb12a83a31617fe98c2e"
+    },
+    "video_preprocessor_config.json": {
+     "size": 385,
+     "git_blob": "3ba673a5ad7d4d13f54155ecd38b2a94a6dac8fe"
+    },
+    "vocab.json": {
+     "size": 6722759,
+     "git_blob": "0aa0ce0658d60ac4a5d609f4eadb0e8e43514176"
+    }
+   }
+  },
+  "unsloth_gguf": {
+   "repo": "unsloth/Qwen3.8-27B-GGUF",
+   "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+   "role": "external reference R2 (llama.cpp)",
+   "files": {
+    "Qwen3.8-27B-UD-Q4_K_M.gguf": {
+     "size": 16464440224,
+     "sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+    }
+   }
+  }
+ }
+}

@@ -28,11 +28,16 @@ jobs:
         run: python -m pytest -q
       - name: Shell scripts parse
         run: for f in scripts/*.sh experiments/feasibility/*.sh; do bash -n "$f"; done
+      - name: README visuals match manifests and results
+        run: |
+          python scripts/render_readme_assets.py
+          git diff --exit-code docs/assets
       - name: Track, corpus and manifests are consistent
         run: |
           bittrellis track > /dev/null
           bittrellis corpus verify
-          bittrellis manifest experiments/feasibility/variants/*.yaml $(ls manifests/*.yaml 2>/dev/null)
+          bittrellis manifest experiments/feasibility/variants/*.yaml
+          for m in manifests/*.yaml; do [ -e "$m" ] || continue; bittrellis manifest "$m" --against manifests/ || exit 1; done
 
   llamacpp-tool:
     # Proves tools/llamacpp_score.cpp still compiles against the pinned llama.cpp headers.
@@ -41,7 +46,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Fetch pinned llama.cpp headers
         run: |
-          COMMIT=$(python3 -c "import yaml;print(yaml.safe_load(open('configs/hpc01.yaml'))['references']['R2']['llama_cpp_commit'])")
+          COMMIT=$(python3 -c "import yaml;print(yaml.safe_load(open('configs/hpc01.yaml'))['external_references']['R2']['llama_cpp_commit'])")
           git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
           git -C /tmp/llama.cpp checkout "$COMMIT" -- include ggml/include
       - name: Compile (syntax + API)

@@ -1,14 +1,14 @@
-schema: bittrellis/precision-manifest@1
+schema: bittrellis/manifest@2
 track: HPC-01
 name: V13-mlp-unsloth-bytes
 description: >
-  Same precision map as R0 (NVFP4 everywhere), but MLP layers 0-55 use unsloth's calibrated
+  Same precision map as V0 (NVFP4 everywhere), but MLP layers 0-55 use unsloth's calibrated
   NVFP4 bytes (llm-compressor, actorder static) instead of the baseline's round-to-nearest ones.
   R1 beat V3 on KL with the same GDN precision; this isolates how much of that comes from the
-  quantizer rather than the topology, at R0's speed and memory.
+  quantizer rather than the topology, at V0's speed and memory.
 default: NVFP4
 rules:
   - match: "L*.mlp"
     layers: "0-55"
-    precision: NVFP4
+    format: NVFP4
     quantizer: unsloth

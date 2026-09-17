@@ -24,7 +24,7 @@ def reference_path(ref_dir: Path, stream_id: str) -> Path:
     return Path(ref_dir) / f"{stream_id}.npz"
 
 
-def build_reference(model_dir: Path, corpus: dict, out_dir: Path, topk: int = 64, gpu_gib: int = 22,
+def build_reference(model_dir: Path, corpus: dict, out_dir: Path, topk: int = 256, gpu_gib: int = 14,
                     cpu_gib: int = 58, chunk: int = 1024, log=print) -> dict:
     import torch
     from transformers import AutoModelForCausalLM
@@ -80,10 +80,12 @@ def build_reference(model_dir: Path, corpus: dict, out_dir: Path, topk: int = 64
     return record
 
 
-def load_reference(ref_dir: Path, corpus: dict) -> dict[str, ScoreDump]:
+def load_reference(ref_dir: Path, corpus: dict, expected_k: int | None = None) -> dict[str, ScoreDump]:
     meta = json.loads((Path(ref_dir) / "reference.json").read_text())
     if meta["corpus_sha256"] != corpus["sha256"]:
         raise ValueError("reference was built for a different corpus")
+    if expected_k is not None and meta.get("topk") != expected_k:
+        raise ValueError(f"reference partition K={meta.get('topk')} but the track pins K={expected_k}")
     out = {}
     for s in corpus["streams"]:
         p = reference_path(ref_dir, s["id"])

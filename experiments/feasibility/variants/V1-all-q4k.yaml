@@ -1,4 +1,4 @@
-schema: bittrellis/precision-manifest@1
+schema: bittrellis/manifest@2
 track: HPC-01
 name: V1-all-q4k
 description: >

@@ -45,6 +45,57 @@ class ScoreDump:
         return cls(z["pos"], z["target"], z["argmax"], z["lp_target"], z["top_ids"], z["top_lp"])
 
 
+@dataclass
+class RefScore:
+    """Candidate log-probabilities on the fixed BF16 reference partition for one stream."""
+
+    pos: np.ndarray        # int32 [M] position i (predicting token i+1)
+    argmax: np.ndarray     # int32 [M]
+    lp_target: np.ndarray  # float32 [M]
+    lp_ref: np.ndarray     # float32 [M, K] log-prob of each reference top-K token id
+
+    def save(self, path: Path) -> None:
+        np.savez_compressed(path, pos=self.pos, argmax=self.argmax, lp_target=self.lp_target, lp_ref=self.lp_ref)
+
+    @classmethod
+    def load(cls, path: Path) -> RefScore:
+        z = np.load(path)
+        return cls(z["pos"], z["argmax"], z["lp_target"], z["lp_ref"])
+
+
+def write_refscore_inputs(tokens: list[int], ref_ids: np.ndarray, tok_path: Path, ref_path: Path) -> None:
+    np.asarray(tokens, "<i4").tofile(tok_path)
+    k = np.asarray([ref_ids.shape[1]], "<i4")
+    with open(ref_path, "wb") as fh:
+        fh.write(k.tobytes())
+        fh.write(np.ascontiguousarray(ref_ids, "<i4").tobytes())
+
+
+def read_refscore_output(path: Path, prefix_len: int) -> RefScore:
+    data = Path(path).read_bytes()
+    if data[:4] != b"BTRS":
+        raise RuntimeError_(f"{path}: not a refscore output")
+    m, k = (int(x) for x in np.frombuffer(data[4:12], "<i4"))
+    am = np.frombuffer(data, "<i4", m, 12)
+    lpt = np.frombuffer(data, "<f4", m, 12 + 4 * m)
+    lpr = np.frombuffer(data, "<f4", m * k, 12 + 8 * m).reshape(m, k)
+    return RefScore(np.arange(prefix_len, prefix_len + m, dtype=np.int32), am.copy(), lpt.copy(), lpr.copy())
+
+
+def run_monitored(cmd: list[str], env: dict[str, str], timeout: int) -> tuple[subprocess.CompletedProcess, int, int]:
+    """Run a command while polling peak GPU memory (device-wide, MiB) and the process's peak host RSS (MiB)."""
+    with PeakMemory() as peak:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+        peak.watch_pid(proc.pid)
+        try:
+            out, err = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            out, err = proc.communicate()
+            raise RuntimeError_(f"timed out after {timeout}s: {' '.join(cmd[:2])}") from None
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, err), peak.peak_mib, peak.peak_host_mib
+
+
 def parse_score(text: str) -> ScoreDump:
     rows = []
     for line in text.splitlines():
@@ -81,7 +132,7 @@ class SparkInfer:
         self.root = Path(root)
         self.track = track
         self.bench_bin = self.root / "build/runtime/qwen3_gguf_bench"
-        self.score_bin = self.root / "build/runtime/qwen3_gguf_score"
+        self.refscore_bin = self.root / "build/bittrellis_refscore"
         self.server_bin = self.root / "build/server/sparkinfer_server"
 
     def commit(self) -> str:
@@ -97,40 +148,55 @@ class SparkInfer:
                                capture_output=True, text=True, check=True).stdout.strip()
         if dirty:
             raise RuntimeError_("SparkInfer checkout has local modifications")
-        for b in (self.bench_bin, self.score_bin):
+        for b in (self.bench_bin, self.refscore_bin):
             if not b.exists():
                 raise RuntimeError_(f"missing binary {b}; run scripts/setup_sparkinfer.sh")
 
-    def score(self, model_dir: Path, ids: list[int], topk: int, prefix_len: int = 0,
-              env: dict[str, str] | None = None, timeout: int = 7200) -> ScoreDump:
-        extra = dict(env or {})
-        extra["SPARKINFER_SCORE_MAX_SEQ"] = str(len(ids) + 16)
-        if prefix_len:
-            extra["SPARKINFER_PREFIX_CACHE_LEN"] = str(prefix_len)
-        cmd = [str(self.score_bin), str(model_dir), str(topk)] + [str(i) for i in ids]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=self.track.clean_env(extra))
-        if r.returncode != 0 or "[FAIL]" in r.stdout:
-            raise RuntimeError_(f"score failed ({r.returncode}): {r.stdout[-800:]} {r.stderr[-1500:]}")
-        return parse_score(r.stdout)
+    def refscore_many(self, model_dir: Path, streams: list[tuple[str, list[int], np.ndarray, int]], workdir: Path,
+                      env: dict[str, str] | None = None, timeout: int = 7200) -> tuple[dict[str, RefScore], dict]:
+        """Score several streams on the fixed reference partition in one process (one model load).
 
-    def bench(self, model_dir: Path, contexts: list[int], reps: int, n_decode: int, prompt_file: Path,
-              env: dict[str, str] | None = None, timeout: int = 3600) -> dict:
+        `streams` holds (stream id, tokens, reference top-K ids [M, K], prefix length).
+        """
+        workdir.mkdir(parents=True, exist_ok=True)
+        lines, outs = [], {}
+        for sid, tokens, ref_ids, prefix_len in streams:
+            tok, ref, out = workdir / f"{sid}.tokens.bin", workdir / f"{sid}.refids.bin", workdir / f"{sid}.out.bin"
+            write_refscore_inputs(tokens, ref_ids, tok, ref)
+            lines.append(f"{tok} {ref} {out} {prefix_len}")
+            outs[sid] = (out, prefix_len, tok, ref)
+        jobs = workdir / "jobs.txt"
+        jobs.write_text("\n".join(lines) + "\n")
+        r, peak_gpu, peak_host = run_monitored([str(self.refscore_bin), str(model_dir), "--jobs", str(jobs)],
+                                               self.track.clean_env(env), timeout)
+        if r.returncode != 0 or "\nOK " not in "\n" + r.stdout:
+            raise RuntimeError_(f"refscore failed ({r.returncode}): {r.stdout[-800:]} {r.stderr[-1500:]}")
+        result = {}
+        for sid, (out, prefix_len, tok, ref) in outs.items():
+            result[sid] = read_refscore_output(out, prefix_len)
+            for f in (tok, ref, out):
+                f.unlink(missing_ok=True)
+        jobs.unlink(missing_ok=True)
+        nonfinite = int(r.stdout.split("nonfinite_logits=")[1].split()[0]) if "nonfinite_logits=" in r.stdout else 0
+        return result, {"nonfinite_logits": nonfinite, "peak_gpu_mib": peak_gpu, "peak_host_mib": peak_host}
+
+    def bench_run(self, model_dir: Path, contexts: list[int], n_decode: int, prompt_file: Path,
+                  env: dict[str, str] | None = None, timeout: int = 3600) -> dict:
+        """One performance repetition: a fresh process, one model load, one pass over `contexts`."""
         extra = dict(env or {})
         extra.update({
             "SPARKINFER_BENCH_SWEEP_CTXS": ",".join(str(c) for c in contexts),
-            "SPARKINFER_BENCH_SWEEP_REPS": str(reps),
+            "SPARKINFER_BENCH_SWEEP_REPS": "1",
             "SPARKINFER_BENCH_PROMPT_FILE": str(prompt_file),
         })
         cmd = [str(self.bench_bin), str(model_dir), str(n_decode), "sweep"]
         t0 = time.time()
-        with PeakMemory() as peak:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=self.track.clean_env(extra))
+        r, peak_gpu, peak_host = run_monitored(cmd, self.track.clean_env(extra), timeout)
         if r.returncode != 0:
             raise RuntimeError_(f"bench failed ({r.returncode}): {r.stdout[-800:]} {r.stderr[-1500:]}")
         out = parse_sweep(r.stdout)
-        out["peak_mib"] = peak.peak_mib
-        out["wall_seconds"] = round(time.time() - t0, 1)
-        out["log_tail"] = r.stdout[-3000:]
+        out.update({"peak_gpu_mib": peak_gpu, "peak_host_mib": peak_host, "wall_seconds": round(time.time() - t0, 1),
+                    "log_tail": r.stdout[-2000:]})
         return out
 
     def start_server(self, model_dir: Path, port: int, ctx: int, log: Path,
@@ -164,20 +230,41 @@ def gpu_memory_used_mib() -> int | None:
         return None
 
 
+def _rss_mib(pid: int) -> int:
+    try:
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith(("VmHWM:", "VmRSS:")):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0
+
+
 class PeakMemory:
-    """Poll device memory in a background thread; `peak_mib` is the maximum seen."""
+    """Poll device memory (and optionally one process's host RSS) in a background thread.
+
+    nvidia-smi is sampled every `interval` seconds, so allocations that live shorter than that can be
+    missed; the reported peak is a lower bound on the true device peak.
+    """
 
     def __init__(self, interval: float = 0.25):
         self.interval = interval
         self.peak_mib = 0
+        self.peak_host_mib = 0
+        self._pid: int | None = None
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def watch_pid(self, pid: int) -> None:
+        self._pid = pid
 
     def _run(self) -> None:
         while not self._stop.is_set():
             used = gpu_memory_used_mib()
             if used is not None:
                 self.peak_mib = max(self.peak_mib, used)
+            if self._pid is not None:
+                self.peak_host_mib = max(self.peak_host_mib, _rss_mib(self._pid))
             self._stop.wait(self.interval)
 
     def __enter__(self) -> PeakMemory:

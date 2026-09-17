@@ -104,8 +104,13 @@ class SafeTensorsDir:
         return hashlib.sha256(self.raw(name)).hexdigest()
 
     def close(self) -> None:
+        # A map that still backs a live memoryview/ndarray cannot be closed; it is read-only, so it
+        # is left to the garbage collector instead of failing the caller.
         for m in self._maps.values():
-            m.close()
+            try:
+                m.close()
+            except BufferError:
+                pass
         for fh in self._fhs:
             fh.close()
         self._maps.clear()

@@ -30,6 +30,7 @@ WMT_LANGS = ["zh_CN", "ja_JP", "ko_KR", "de_DE", "fr_FR", "es_MX", "ru_RU", "ar_
 TOKENIZER = ("gittensor-model-hub/Qwen3.8-27B-NVFP4-RTX5090", "5b7a687fc8211a5d631c8ca6a593dd37eb26ce33", "tokenizer.json")
 
 SHORT_TOKENS = 4096
+SHORT_CATEGORIES = ("general", "math", "code", "tools", "multilingual")
 LONG_LENGTHS = (8192, 16384, 32768)
 LONG_TAIL = 384
 VERSION = "hpc01-v2"
@@ -63,7 +64,7 @@ def _order(items: list, key, seed: str) -> list:
 
 
 def _split(items: list, key, split: str, seed: str) -> list:
-    """Deterministic 50/50 partition by id hash; holdout additionally reorders with the secret seed."""
+    """Deterministic 50/50 partition by id hash: even hashes are "public", odd ones "public-validation"."""
     part = [it for it in items if (int(hashlib.sha256(f"part:{key(it)}".encode()).hexdigest(), 16) % 2 == 0) == (split == "public")]
     return _order(part, key, seed)
 
@@ -110,50 +111,17 @@ def _detok(text: str) -> str:
     return text
 
 
-def build_corpus(cache: Path, split: str = "public", seed: str | None = None) -> dict:
-    from tokenizers import Tokenizer
+def assemble_streams(tok, short: dict[str, list[str]], long_docs: list[str], seed: str) -> list[dict]:
+    """Token streams from documents: one 4K stream per short category, 8K/16K/32K needle streams.
 
-    if split not in ("public", "holdout"):
-        raise ValueError(split)
-    if split == "holdout":
-        seed = seed or os.environ.get("BITTRELLIS_HOLDOUT_SEED")
-        if not seed:
-            raise ValueError("holdout corpus needs BITTRELLIS_HOLDOUT_SEED")
-    seed = seed or "hpc01-public"
-    tok_bytes = fetch(*TOKENIZER, cache=cache, dataset=False)
-    tok = Tokenizer.from_str(tok_bytes.decode())
-
-    wiki = wikitext_articles(_parquet_rows(fetch(*SOURCES["wikitext"], cache=cache)))
-    wiki = _split(wiki, lambda a: a[:200], split, seed)
-    gsm = _split(_parquet_rows(fetch(*SOURCES["gsm8k"], cache=cache)), lambda r: r["question"], split, seed)
-    he = _split(_parquet_rows(fetch(*SOURCES["humaneval"], cache=cache)), lambda r: r["task_id"], split, seed)
-    hermes = _split(json.loads(fetch(*SOURCES["hermes"], cache=cache)), lambda r: r["id"], split, seed)
-    wmt: list[dict] = []
-    for lang in WMT_LANGS:
-        rev = SOURCES["wmt24pp"][1]
-        for line in fetch(SOURCES["wmt24pp"][0], rev, f"en-{lang}.jsonl", cache).decode().splitlines():
-            r = json.loads(line)
-            if not r.get("is_bad_source") and r.get("target"):
-                wmt.append({"lang": lang, **r})
-    wmt = _split(wmt, lambda r: f"{r['lang']}:{r['segment_id']}", split, seed)
-
-    def chat(q: str, a: str) -> str:
-        return CHAT_USER.format(q=q.strip()) + a.strip() + CHAT_END
-
+    Shared by the public corpus and validators' private holdouts, so both have the same structure.
+    """
     streams: list[dict] = []
-    short = {
-        "general": wiki[:4],
-        "math": [chat(r["question"], r["answer"].replace("####", "The answer is")) for r in gsm],
-        "code": [chat("Complete this Python function.\n\n" + r["prompt"], "```python\n" + r["prompt"] + r["canonical_solution"] + "```") for r in he],
-        "tools": [_hermes_chat(r) for r in hermes],
-        "multilingual": [chat(f"Translate to {r['lang']}:\n{r['source']}", r["target"]) for r in wmt],
-    }
     for cat, docs in short.items():
         ids = _fill(tok, docs, SHORT_TOKENS)
         streams.append({"id": f"short-{cat}", "category": cat, "ids": ids, "score_from": 0, "needles": []})
 
     rng = random.Random(f"{seed}:needles")
-    long_docs = wiki[4:]
     offset = 0
     for length in LONG_LENGTHS:
         colors = ["red", "green", "blue"]
@@ -184,6 +152,47 @@ def build_corpus(cache: Path, split: str = "public", seed: str | None = None) ->
                    for c, d in zip(colors, (0.10, 0.50, 0.90), strict=True)]
         streams.append({"id": f"long-{length // 1024}k", "category": "long", "ids": ids,
                         "score_from": len(ids) - LONG_TAIL, "needles": needles})
+
+    return streams
+
+
+def build_corpus(cache: Path, split: str = "public", seed: str | None = None) -> dict:
+    from tokenizers import Tokenizer
+
+    # "public" is the development fidelity set every candidate is scored on. "public-validation" is the
+    # other half of the same public sources: useful for checking overfitting locally, but it is NOT a
+    # holdout -- anyone can rebuild it. The private holdout is built from unpublished text (holdout.py).
+    if split not in ("public", "public-validation"):
+        raise ValueError(split)
+    seed = seed or "hpc01-public"
+    tok_bytes = fetch(*TOKENIZER, cache=cache, dataset=False)
+    tok = Tokenizer.from_str(tok_bytes.decode())
+
+    wiki = wikitext_articles(_parquet_rows(fetch(*SOURCES["wikitext"], cache=cache)))
+    wiki = _split(wiki, lambda a: a[:200], split, seed)
+    gsm = _split(_parquet_rows(fetch(*SOURCES["gsm8k"], cache=cache)), lambda r: r["question"], split, seed)
+    he = _split(_parquet_rows(fetch(*SOURCES["humaneval"], cache=cache)), lambda r: r["task_id"], split, seed)
+    hermes = _split(json.loads(fetch(*SOURCES["hermes"], cache=cache)), lambda r: r["id"], split, seed)
+    wmt: list[dict] = []
+    for lang in WMT_LANGS:
+        rev = SOURCES["wmt24pp"][1]
+        for line in fetch(SOURCES["wmt24pp"][0], rev, f"en-{lang}.jsonl", cache).decode().splitlines():
+            r = json.loads(line)
+            if not r.get("is_bad_source") and r.get("target"):
+                wmt.append({"lang": lang, **r})
+    wmt = _split(wmt, lambda r: f"{r['lang']}:{r['segment_id']}", split, seed)
+
+    def chat(q: str, a: str) -> str:
+        return CHAT_USER.format(q=q.strip()) + a.strip() + CHAT_END
+
+    short = {
+        "general": wiki[:4],
+        "math": [chat(r["question"], r["answer"].replace("####", "The answer is")) for r in gsm],
+        "code": [chat("Complete this Python function.\n\n" + r["prompt"], "```python\n" + r["prompt"] + r["canonical_solution"] + "```") for r in he],
+        "tools": [_hermes_chat(r) for r in hermes],
+        "multilingual": [chat(f"Translate to {r['lang']}:\n{r['source']}", r["target"]) for r in wmt],
+    }
+    streams = assemble_streams(tok, short, wiki[4:], seed)
 
     body = {
         "version": VERSION, "split": split,

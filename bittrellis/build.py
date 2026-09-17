@@ -1,17 +1,14 @@
-"""Build a deployable SparkInfer checkpoint from a precision manifest.
+"""Build a deployable SparkInfer checkpoint from a manifest.
 
-Inputs are the two pinned checkpoints: the BF16 base model and the NVFP4 baseline. Output is a
-ModelOpt-layout directory the pinned loader reads directly:
+Sources are the hash-pinned checkpoints in configs/sources.lock.json:
 
-    precision  stored bytes                               source
-    ---------  -----------------------------------------  ---------------------------------------
-    NVFP4      .weight U8 + .weight_scale + _scale_2       baseline bytes, or RTN from BF16
-    FP8        .weight F8_E4M3 + per-row BF16 .weight_scale  RTN from BF16 (GDN only)
-    Q4_K       .weight BF16 (byte-identical to base)       SparkInfer fits Q4_K at load
+    base              canonical BF16 weights: Q4_K units store these bytes, regenerable quantizers read them
+    gittensor_nvfp4   the shipped checkpoint: every non-searchable tensor, and `baseline` NVFP4 bytes
+    unsloth_nvfp4     attested calibrated NVFP4 bytes (`unsloth`), MLP layers 0-55
 
-Non-searchable tensors (embeddings, norms, conv1d, in_proj_a/b, A_log, dt_bias, vision tower)
-are copied byte-for-byte from the baseline. No GPU is needed; the build is deterministic, so
-the same manifest always yields the same shard hashes.
+Each unit's tensors come from its quantizer (bittrellis/quantizers). Everything else is copied
+byte-for-byte from the shipped checkpoint. No GPU is needed and the build is deterministic, so the
+same manifest always yields the same shard hashes.
 """
 
 from __future__ import annotations
@@ -23,19 +20,19 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 import yaml
 
 from . import __version__
-from .manifest import Manifest, candidate_hash, summarize
-from .model.qwen38 import Linear, Qwen38Arch, Unit
-from .precision import FP8, NVFP4, Q4_K
-from .quant.formats import FP4_E2M1_MAX, FP8_E4M3_MAX, bf16_to_f32, quantize_fp8_per_channel, quantize_nvfp4
+from . import quantizers as Q
+from .lineage import require_verified
+from .manifest import Assignment, Manifest, candidate_hash, summarize
+from .model.qwen38 import Qwen38Arch, Unit
+from .precision import FP8, NVFP4
+from .quantizers.builtin import CT_SUFFIXES, MODELOPT_SUFFIXES
 from .safetensors_io import SafeTensorsDir, ShardWriter, file_sha256
 from .track import Track
 
-NVFP4_SUFFIXES = (".weight", ".weight_scale", ".weight_scale_2", ".input_scale")
-ROW_CHUNK = 2048
+LINEAR_SUFFIXES = tuple(sorted(set(MODELOPT_SUFFIXES + CT_SUFFIXES)))
 
 
 @dataclass
@@ -46,44 +43,7 @@ class PlannedTensor:
     make: Callable[[], object]
 
 
-def _base_f32_rows(base: SafeTensorsDir, lin: Linear):
-    """Yield (row_start, float32 rows) of a BF16 base Linear in bounded-memory chunks."""
-    name = lin.prefix + ".weight"
-    t = base.get(name)
-    if t is None or t.dtype != "BF16" or t.shape != (lin.rows, lin.cols):
-        raise ValueError(f"base checkpoint: expected BF16 {name} [{lin.rows}, {lin.cols}], got {t}")
-    u = base.array(name, "<u2")
-    for r in range(0, lin.rows, ROW_CHUNK):
-        yield r, bf16_to_f32(u[r : r + ROW_CHUNK].reshape(-1)).reshape(-1, lin.cols)
-
-
-def _nvfp4_rtn(base: SafeTensorsDir, lin: Linear) -> tuple[np.ndarray, np.ndarray, np.float32]:
-    amax = 0.0
-    for _, rows in _base_f32_rows(base, lin):
-        amax = max(amax, float(np.abs(rows).max()))
-    packed = np.empty((lin.rows, lin.cols // 2), np.uint8)
-    scales = np.empty((lin.rows, lin.cols // 16), np.uint8)
-    ws2 = np.float32(1.0)
-    for r, rows in _base_f32_rows(base, lin):
-        p, s, ws2 = quantize_nvfp4(rows, global_amax=amax)
-        packed[r : r + len(rows)] = p
-        scales[r : r + len(rows)] = s
-    return packed, scales, ws2
-
-
-def _fp8_rtn(base: SafeTensorsDir, lin: Linear) -> tuple[np.ndarray, np.ndarray]:
-    codes = np.empty((lin.rows, lin.cols), np.uint8)
-    scale = np.empty((lin.rows, 1), "<u2")
-    for r, rows in _base_f32_rows(base, lin):
-        c, s = quantize_fp8_per_channel(rows)
-        codes[r : r + len(rows)] = c
-        scale[r : r + len(rows)] = s
-    return codes, scale
-
-
 class _Memo:
-    """Compute a multi-tensor encoding once, hand out its parts lazily."""
-
     def __init__(self, fn):
         self.fn, self.value = fn, None
 
@@ -93,58 +53,35 @@ class _Memo:
         return self.value
 
 
-CT_NVFP4_SUFFIXES = (".weight_packed", ".weight_scale", ".weight_global_scale", ".input_global_scale")
-
-
-def plan_tensors(units: list[Unit], full: dict[str, tuple[str, str]], base: SafeTensorsDir,
-                 baseline: SafeTensorsDir, sources: dict[str, SafeTensorsDir] | None = None) -> list[PlannedTensor]:
-    sources = sources or {}
+def plan_tensors(units: list[Unit], assignments: dict[str, Assignment], ctx: Q.QuantContext,
+                 frozen: SafeTensorsDir) -> list[PlannedTensor]:
     plan: list[PlannedTensor] = []
     searchable: set[str] = set()
+    for q in {Q.get(a.quantizer) for a in assignments.values()}:
+        q.begin(ctx)
+    # Pipeline order (layer ascending, unit order) matters for sequential quantizers.
     for u in units:
-        prec, quantizer = full[u.id]
+        a = assignments[u.id]
+        qz = Q.get(a.quantizer)
+        why = qz.available(ctx, u, a.format)
+        if why:
+            raise ValueError(f"{u.id}: {a.format}@{a.quantizer}: {why}")
         for lin in u.linears:
-            p = lin.prefix
-            searchable.add(p)
-            if prec == Q4_K:
-                ref = base.get(p + ".weight")
-                if ref is None:
-                    raise ValueError(f"base checkpoint lacks {p}.weight")
-                plan.append(PlannedTensor(p + ".weight", "BF16", ref.shape, lambda n=p + ".weight": base.raw(n)))
-            elif prec == FP8:
-                memo = _Memo(lambda lin=lin: _fp8_rtn(base, lin))
-                plan.append(PlannedTensor(p + ".weight", "F8_E4M3", (lin.rows, lin.cols), lambda m=memo: m()[0]))
-                plan.append(PlannedTensor(p + ".weight_scale", "BF16", (lin.rows, 1), lambda m=memo: m()[1]))
-            elif prec == NVFP4 and quantizer == "unsloth":
-                src = sources.get("unsloth")
-                if src is None:
-                    raise ValueError("quantizer 'unsloth' needs the pinned R1 checkpoint (--unsloth)")
-                if src.get(p + ".weight_packed") is None:
-                    raise ValueError(f"unsloth checkpoint has no NVFP4 bytes for {p} (it ships NVFP4 only for MLP layers 0-55)")
-                for suf in CT_NVFP4_SUFFIXES:
-                    ref = src.get(p + suf)
-                    if ref is not None:
-                        plan.append(PlannedTensor(p + suf, ref.dtype, ref.shape, lambda n=p + suf, s_=src: s_.raw(n)))
-            elif prec == NVFP4 and quantizer == "baseline":
-                if baseline.get(p + ".weight_scale_2") is None:
-                    raise ValueError(f"baseline has no ModelOpt NVFP4 tensors for {p}; use quantizers.NVFP4: rtn")
-                for suf in NVFP4_SUFFIXES:
-                    ref = baseline.get(p + suf)
-                    if ref is not None:
-                        plan.append(PlannedTensor(p + suf, ref.dtype, ref.shape, lambda n=p + suf: baseline.raw(n)))
-            elif prec == NVFP4 and quantizer == "rtn":
-                memo = _Memo(lambda lin=lin: _nvfp4_rtn(base, lin))
-                plan.append(PlannedTensor(p + ".weight", "U8", (lin.rows, lin.cols // 2), lambda m=memo: m()[0]))
-                plan.append(PlannedTensor(p + ".weight_scale", "F8_E4M3", (lin.rows, lin.cols // 16), lambda m=memo: m()[1]))
-                plan.append(PlannedTensor(p + ".weight_scale_2", "F32", (), lambda m=memo: np.asarray(m()[2], "<f4").reshape(())))
-            else:
-                raise ValueError(f"{u.id}: unhandled {prec}@{quantizer}")
-    linear_suffixes = NVFP4_SUFFIXES + (".weight_packed", ".weight_global_scale", ".input_global_scale")
-    for name, ref in baseline.tensors.items():
+            searchable.add(lin.prefix)
+            if qz.replay_mode == "sequential":
+                produced = encode_unit(qz, ctx, u, lin, a)  # must run now, in pipeline order
+                for suf, dtype, shape, data in produced:
+                    plan.append(PlannedTensor(lin.prefix + suf, dtype, tuple(shape), lambda d=data: d))
+                continue
+            memo = _Memo(lambda qz=qz, u=u, lin=lin, a=a: encode_unit(qz, ctx, u, lin, a))
+            for suf, dtype, shape in _declared(qz, ctx, u, lin, a.format):
+                plan.append(PlannedTensor(lin.prefix + suf, dtype, shape,
+                                          lambda m=memo, suf=suf: next(d for s, _, _, d in m() if s == suf)))
+    for name, ref in frozen.tensors.items():
         prefix, _, suffix = name.rpartition(".")
-        if prefix in searchable and "." + suffix in linear_suffixes:
+        if prefix in searchable and "." + suffix in LINEAR_SUFFIXES:
             continue
-        plan.append(PlannedTensor(name, ref.dtype, ref.shape, lambda n=name: baseline.raw(n)))
+        plan.append(PlannedTensor(name, ref.dtype, ref.shape, lambda n=name: frozen.raw(n)))
     plan.sort(key=lambda t: t.name)
     names = [t.name for t in plan]
     if len(names) != len(set(names)):
@@ -152,49 +89,79 @@ def plan_tensors(units: list[Unit], full: dict[str, tuple[str, str]], base: Safe
     return plan
 
 
-def quant_config(units: list[Unit], full: dict[str, tuple[str, str]], baseline_cfg: dict) -> dict:
+def encode_unit(qz: Q.Quantizer, ctx: Q.QuantContext, u: Unit, lin, a: Assignment):
+    ctx.params = dict(a.params)
+    return qz.encode(ctx, u, lin, a.format)
+
+
+def _declared(qz: Q.Quantizer, ctx: Q.QuantContext, u: Unit, lin, fmt: str) -> list[tuple[str, str, tuple]]:
+    """Tensor names/dtypes/shapes a quantizer will produce, without computing the data."""
+    if qz.lineage == "attested":
+        return [(s, dt, tuple(sh)) for s, dt, sh, _ in qz.encode(ctx, u, lin, fmt)]  # splices are views: cheap
+    if qz.lineage == "runtime":
+        return [(".weight", "BF16", (lin.rows, lin.cols))]
+    if fmt == FP8:
+        return [(".weight", "F8_E4M3", (lin.rows, lin.cols)), (".weight_scale", "BF16", (lin.rows, 1))]
+    if fmt == NVFP4:
+        return [(".weight", "U8", (lin.rows, lin.cols // 2)), (".weight_scale", "F8_E4M3", (lin.rows, lin.cols // 16)),
+                (".weight_scale_2", "F32", ())]
+    raise ValueError(f"{qz.name}: cannot declare outputs for {fmt}")
+
+
+def quant_config(units: list[Unit], assignments: dict[str, Assignment], frozen_cfg: dict) -> dict:
     layers: dict[str, dict] = {}
     q4k: list[str] = []
     for u in units:
+        a = assignments[u.id]
         for lin in u.linears:
-            p, qz = full[u.id]
-            if p == NVFP4:
-                layers[lin.prefix] = {"quant_algo": "NVFP4", "group_size": 16, "quantizer": qz}
-            elif p == FP8:
-                layers[lin.prefix] = {"quant_algo": "FP8_PER_CHANNEL"}
+            if a.format == NVFP4:
+                layers[lin.prefix] = {"quant_algo": "NVFP4", "group_size": 16, "quantizer": a.quantizer_ref}
+            elif a.format == FP8:
+                layers[lin.prefix] = {"quant_algo": "FP8_PER_CHANNEL", "quantizer": a.quantizer_ref}
             else:
                 q4k.append(lin.prefix)
-    old = baseline_cfg.get("quantization_config", {})
-    ignore = sorted(set(old.get("ignore", [])) | set(q4k))
+    old = frozen_cfg.get("quantization_config", {})
     return {
         "quant_method": "modelopt",
         "quant_algo": "MIXED_PRECISION",
         "producer": {"name": "bittrellis", "version": __version__},
         "quantized_layers": layers,
-        "ignore": ignore,
+        "ignore": sorted(set(old.get("ignore", [])) | set(q4k)),
         "runtime_fit": {"Q4_K": q4k},
-        "fp8_scale": {"max": FP8_E4M3_MAX}, "nvfp4_scale": {"max": FP4_E2M1_MAX * FP8_E4M3_MAX},
     }
 
 
-def build(manifest: Manifest, track: Track, base_dir: Path, baseline_dir: Path, out_dir: Path,
-          log: Callable[[str], None] = print, shard_bytes: int = 5 * 1024**3,
-          sources: dict[str, Path] | None = None) -> dict:
+def open_context(assignments: dict[str, Assignment], source_dirs: dict[str, Path], verify: bool,
+                 log: Callable[[str], None]) -> tuple[Q.QuantContext, list[SafeTensorsDir]]:
+    needed = {"base", "gittensor_nvfp4"} | {Q.get(a.quantizer).source_id for a in assignments.values()
+                                            if Q.get(a.quantizer).lineage == "attested"}
+    missing = sorted(s for s in needed if s not in source_dirs)
+    if missing:
+        raise ValueError(f"missing source checkouts: {missing}")
+    if verify:
+        for s in sorted(needed):
+            require_verified(s, source_dirs[s], log=log)
+    opened = {s: SafeTensorsDir(source_dirs[s]) for s in needed}
+    ctx = Q.QuantContext(base=opened["base"], sources=opened)
+    return ctx, list(opened.values())
+
+
+def build(manifest: Manifest, track: Track, source_dirs: dict[str, Path], out_dir: Path,
+          log: Callable[[str], None] = print, shard_bytes: int = 5 * 1024**3, verify: bool = True) -> dict:
     out_dir = Path(out_dir)
     if out_dir.exists() and any(out_dir.iterdir()):
         raise FileExistsError(f"{out_dir} is not empty")
     if manifest.track != track.id:
         raise ValueError(f"manifest is for {manifest.track}, track is {track.id}")
-    baseline_cfg = json.loads((Path(baseline_dir) / "config.json").read_text())
-    arch = Qwen38Arch.from_config(baseline_cfg)
-    units = arch.units()
-    full = manifest.expand_full(units)
-    cid = candidate_hash(track.id, full)
+    frozen_dir = Path(source_dirs["gittensor_nvfp4"])
+    frozen_cfg = json.loads((frozen_dir / "config.json").read_text())
+    units = Qwen38Arch.from_config(frozen_cfg).units()
+    assignments = manifest.expand_assignments(units)
+    cid = candidate_hash(track.id, assignments)
     t0 = time.time()
-    used = {q for _, q in full.values()}
-    opened = {k: SafeTensorsDir(v) for k, v in (sources or {}).items() if k in used}
-    with SafeTensorsDir(base_dir) as base, SafeTensorsDir(baseline_dir) as baseline:
-        plan = plan_tensors(units, full, base, baseline, opened)
+    ctx, handles = open_context(assignments, source_dirs, verify, log)
+    try:
+        plan = plan_tensors(units, assignments, ctx, ctx.sources["gittensor_nvfp4"])
         log(f"[build] {manifest.name} ({cid}): {len(plan)} tensors -> {out_dir}")
         writer = ShardWriter(out_dir, shard_bytes)
         for i, t in enumerate(plan):
@@ -202,30 +169,27 @@ def build(manifest: Manifest, track: Track, base_dir: Path, baseline_dir: Path, 
             if (i + 1) % 250 == 0:
                 log(f"[build]   {i + 1}/{len(plan)} tensors, {time.time() - t0:.0f}s")
         writer.close(metadata={"producer": "bittrellis", "candidate_id": cid})
-    for src in opened.values():
-        src.close()
-    cfg = dict(baseline_cfg)
-    cfg["quantization_config"] = quant_config(units, full, baseline_cfg)
+    finally:
+        for h in handles:
+            h.close()
+    cfg = dict(frozen_cfg)
+    cfg["quantization_config"] = quant_config(units, assignments, frozen_cfg)
     (out_dir / "config.json").write_text(json.dumps(cfg, indent=2) + "\n")
-    hf_quant = {"producer": {"name": "bittrellis", "version": __version__},
-                "quantization": {k: v for k, v in cfg["quantization_config"].items() if k != "quant_method"}}
-    (out_dir / "hf_quant_config.json").write_text(json.dumps(hf_quant, indent=2) + "\n")
     for f in track["model"]["aux_files"]:
-        src = Path(baseline_dir) / f
-        if src.exists():
-            shutil.copy2(src, out_dir / f)
+        if (frozen_dir / f).exists():
+            shutil.copy2(frozen_dir / f, out_dir / f)
     (out_dir / "precision_manifest.yaml").write_text(yaml.safe_dump(manifest.to_dict(units), sort_keys=False))
     files = sorted(p.name for p in out_dir.glob("*.safetensors"))
+    used = sorted({Q.get(a.quantizer).ref for a in assignments.values()})
     record = {
         "candidate_id": cid,
         "name": manifest.name,
         "track": track.id,
         "bittrellis_version": __version__,
-        "base": track["model"]["base"],
-        "baseline": track["model"]["baseline"],
-        "quantizers": manifest.quantizers,
-        "quantizer_sources": {k: track["model"].get("quantizer_sources", {}).get(k) for k in opened},
-        "summary": summarize(full, units),
+        "quantizers": {r: {"lineage": Q.get(r.split("@")[0]).lineage, "replay_mode": Q.get(r.split("@")[0]).replay_mode,
+                           "source": Q.get(r.split("@")[0]).source_id} for r in used},
+        "sources_verified": verify,
+        "summary": summarize(assignments, units),
         "checkpoint_bytes": sum((out_dir / f).stat().st_size for f in files),
         "files": {f: file_sha256(out_dir / f) for f in files},
         "build_seconds": round(time.time() - t0, 1),

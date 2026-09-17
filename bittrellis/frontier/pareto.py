@@ -1,41 +1,53 @@
-"""Quality gates, noise-aware Pareto frontier and Frontier Gain.
+"""Gates, noise-aware Pareto frontier and Frontier Gain (FG-2).
 
-Objectives (HPC-01): minimize KL to BF16, maximize decode tok/s, maximize prefill tok/s,
-minimize peak VRAM.
+Objectives (HPC-01): minimize RP-KL, maximize decode tok/s, maximize 4K prefill tok/s, minimize
+peak GPU memory.
 
-Dominance is *epsilon*-dominance: a result only counts as better on an objective when it beats
-the other by more than that objective's measurement noise (track `frontier.epsilon`). Without
-it, a 0.3 tok/s decode wobble or a 0.0003 nats KL difference would let a result "dominate"
-another by luck.
+Only *internal* rows -- legal BitTrellis manifests on the pinned runtime, starting with the V0
+incumbent -- take part in dominance and Frontier Gain. External references are reported beside
+the frontier and never move it.
 
-Frontier Gain (FG-2) is the increase in normalized dominated hypervolume a result adds to the
-current frontier. Each objective is mapped to [0, 1] inside the track's fixed box (1 = best
-edge), so FG-2 is a share of the 4-D box: 0 for a dominated or invalid result, and progress for
-anything that opens new operating room on any axis.
+"Materially better" on an objective:
+* RP-KL: lower by more than the floor AND the paired block-bootstrap 95% interval of the per-position
+  difference excludes zero;
+* decode / prefill: higher by more than max(floor, either result's two-run relative spread);
+* peak GPU memory: lower by more than the floor (GiB).
+
+A dominates B if A is materially better on at least one objective and materially worse on none.
+Pairwise ε-dominance is not guaranteed to be transitive; the frontier is the set of valid internal
+rows that no other valid internal row dominates.
+
+FG-2 of a row is the increase in normalized dominated hypervolume it adds to every other valid
+internal row (1 = best edge of the track's box on each axis).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 FG_VERSION = "FG-2"
-OBJECTIVES = (("kl", "min"), ("decode_tps", "max"), ("prefill_tps", "max"), ("vram_gib", "min"))
+OBJECTIVES = (("rp_kl", "min"), ("decode_tps", "max"), ("prefill_tps", "max"), ("peak_gpu_gib", "min"))
 
 
 @dataclass
 class Row:
     id: str
     name: str
-    kind: str                      # "candidate" or "reference"
-    kl: float
+    kind: str                           # "internal" or "external"
+    rp_kl: float
     decode_tps: float
-    vram_gib: float
     prefill_tps: float
+    peak_gpu_gib: float
+    decode_spread: float = 0.0
+    prefill_spread: float = 0.0
     top1: float | None = None
-    needle_recall: float | None = None
-    checkpoint_gib: float | None = None
-    tasks: dict | None = None
+    needles_by_length: dict | None = None
+    correctness_ok: bool | None = None
     audit_ok: bool | None = None
+    tasks: dict | None = None
+    holdout: str | None = None          # "PASS", "FAIL" or None (not run)
+    extra: dict = field(default_factory=dict)
     gate_failures: list[str] = field(default_factory=list)
     frontier: bool = False
     gain: float = 0.0
@@ -45,46 +57,58 @@ class Row:
         return not self.gate_failures
 
 
-def apply_gates(row: Row, gates: dict, reference_tasks: dict | None) -> list[str]:
+QualityCmp = Callable[[Row, Row], int]  # -1: a materially better, +1: a materially worse, 0: not distinguishable
+
+
+def apply_gates(row: Row, gates: dict, incumbent_tasks: dict | None) -> list[str]:
     fails = []
-    if row.kl > gates["kl_max"]:
-        fails.append(f"KL {row.kl:.4f} > {gates['kl_max']}")
+    if row.rp_kl > gates["rp_kl_max"]:
+        fails.append(f"RP-KL {row.rp_kl:.4f} > {gates['rp_kl_max']}")
     if row.top1 is not None and row.top1 < gates["top1_min"]:
         fails.append(f"top-1 {row.top1:.3f} < {gates['top1_min']}")
-    if row.needle_recall is not None and row.needle_recall < gates["needle_min"]:
-        fails.append(f"needle recall {row.needle_recall:.2f} < {gates['needle_min']}")
-    if row.audit_ok is False:
-        fails.append("checkpoint audit failed")
-    if row.tasks and reference_tasks:
-        for suite, s in reference_tasks["suites"].items():
+    guard = gates["long_context_guard"]["required_success"]
+    for stream, need in guard.items():
+        got = (row.needles_by_length or {}).get(stream)
+        if got is None:
+            fails.append(f"long-context guard: {stream} not measured")
+        elif got["required"] and got["retrieved"] / got["required"] < need:
+            fails.append(f"long-context guard: {stream} {got['retrieved']}/{got['required']} needles")
+    if row.kind == "internal":
+        if row.audit_ok is not True:
+            fails.append("checkpoint audit failed or missing")
+        if row.correctness_ok is False:
+            fails.append("runtime correctness failed")
+        if row.holdout == "FAIL":
+            fails.append("private holdout FAIL")
+    if row.tasks and incumbent_tasks:
+        for suite, s in incumbent_tasks["suites"].items():
             got = row.tasks["suites"].get(suite)
             if got is None:
                 fails.append(f"task suite {suite} missing")
             elif s["passed"] - got["passed"] > gates["task_max_drop_items"]:
-                fails.append(f"{suite}: {got['passed']}/{got['n']} vs reference {s['passed']}/{s['n']}")
+                fails.append(f"task guard {suite}: {got['passed']}/{got['n']} vs incumbent {s['passed']}/{s['n']}")
     row.gate_failures = fails
     return fails
 
 
-def _better(a: float, b: float, sense: str, eps: float) -> bool:
-    return a < b - eps if sense == "min" else a > b + eps
+def _cmp_perf(a: Row, b: Row, key: str, floor: float) -> int:
+    va, vb = getattr(a, key), getattr(b, key)
+    if key in ("decode_tps", "prefill_tps"):
+        thr = max(floor, getattr(a, key.replace("_tps", "_spread")), getattr(b, key.replace("_tps", "_spread")))
+        rel = (va - vb) / vb if vb else 0.0
+        return -1 if rel > thr else (1 if rel < -thr else 0)
+    diff = va - vb  # peak_gpu_gib, lower is better
+    return -1 if diff < -floor else (1 if diff > floor else 0)
 
 
-def _worse(a: float, b: float, sense: str, eps: float) -> bool:
-    return _better(b, a, sense, eps)
+def dominates(a: Row, b: Row, floors: dict, quality_cmp: QualityCmp) -> bool:
+    signs = [quality_cmp(a, b)] + [_cmp_perf(a, b, k, floors[k]) for k, _ in OBJECTIVES[1:]]
+    return -1 in signs and 1 not in signs
 
 
-def dominates(a: Row, b: Row, epsilon: dict | None = None) -> bool:
-    """a dominates b: not worse beyond noise on any objective, better beyond noise on one."""
-    eps = epsilon or {}
-    worse = any(_worse(getattr(a, k), getattr(b, k), s, eps.get(k, 0.0)) for k, s in OBJECTIVES)
-    better = any(_better(getattr(a, k), getattr(b, k), s, eps.get(k, 0.0)) for k, s in OBJECTIVES)
-    return better and not worse
-
-
-def pareto(rows: list[Row], epsilon: dict | None = None) -> list[Row]:
-    valid = [r for r in rows if r.valid]
-    return [r for r in valid if not any(dominates(o, r, epsilon) for o in valid if o is not r)]
+def pareto(rows: list[Row], floors: dict, quality_cmp: QualityCmp) -> list[Row]:
+    pool = [r for r in rows if r.kind == "internal" and r.valid]
+    return [r for r in pool if not any(dominates(o, r, floors, quality_cmp) for o in pool if o is not r)]
 
 
 def normalize(row: Row, box: dict) -> tuple[float, ...]:
@@ -112,16 +136,15 @@ def hypervolume(points: list[tuple[float, ...]]) -> float:
 
 
 def frontier_gain(row: Row, incumbents: list[Row], box: dict) -> float:
-    """FG-2 of `row` against already-accepted rows. Invalid rows gain nothing."""
-    if not row.valid:
+    """FG-2 of `row` against valid internal incumbents. External or invalid rows gain nothing."""
+    if row.kind != "internal" or not row.valid:
         return 0.0
-    base = [normalize(r, box) for r in incumbents if r.valid]
+    base = [normalize(r, box) for r in incumbents if r.kind == "internal" and r.valid]
     return max(0.0, hypervolume(base + [normalize(row, box)]) - hypervolume(base))
 
 
-def rank(rows: list[Row], box: dict, epsilon: dict | None = None) -> list[Row]:
-    """Mark frontier membership and each frontier row's marginal gain over all other valid rows."""
-    front = {id(r) for r in pareto(rows, epsilon)}
+def rank(rows: list[Row], box: dict, floors: dict, quality_cmp: QualityCmp) -> list[Row]:
+    front = {id(r) for r in pareto(rows, floors, quality_cmp)}
     for r in rows:
         r.frontier = id(r) in front
         r.gain = frontier_gain(r, [o for o in rows if o is not r], box) if r.frontier else 0.0

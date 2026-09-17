@@ -1,28 +1,38 @@
 """Audit a checkpoint before anything is benchmarked.
 
-`describe()` answers "what will SparkInfer execute?" for any Qwen3.8 checkpoint (including the
-external references). `audit()` additionally enforces the HPC-01 rules for candidates:
+`describe()` answers "what will SparkInfer execute?" for any Qwen3.8 checkpoint. `audit()` enforces
+the HPC-01 rules for candidates, in this order:
 
-1. config.json is the baseline config except for `quantization_config`.
-2. The tensor set is exactly what the manifest implies -- nothing added, nothing missing.
-3. Every non-searchable tensor is byte-identical to the baseline.
-4. Every BF16 (Q4_K) Linear is byte-identical to the BF16 base model.
-5. Every NVFP4 / FP8 Linear decodes to within a fidelity bound of the base weights, sampled
-   over rows, so fine-tuned or substituted weights cannot hide inside a "quantized" tensor.
-6. Each unit resolves to the manifest's precision under the pinned loader rules.
+1. sources      base and shipped checkpoints (plus any attested source used) match the hash lock
+2. config       config.json is the shipped config except `quantization_config`
+3. tensor set   exactly the tensors the manifest's quantizers produce plus the frozen tensors
+4. frozen       every non-searchable tensor is byte-identical to the shipped checkpoint
+5. execution    each unit resolves, under the pinned loader rules, to the manifest's format
+6. lineage      per quantizer class:
+                  runtime      stored BF16 is byte-identical to the base model
+                  attested     unit bytes are byte-identical to the verified source
+                  regenerable  sampled units are rebuilt (replaying the pipeline in order for
+                               sequential quantizers) and must match byte-for-byte
+7. anomaly      reconstruction error vs round-to-nearest is reported; > 5x is rejected as
+                substituted bytes (calibrated encoders measure 1.2-1.6x, so this is diagnostic)
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
-from .manifest import Manifest
+from . import quantizers as Q
+from .build import _declared, encode_unit
+from .lineage import LineageError, require_verified
+from .manifest import Assignment, Manifest
 from .model.qwen38 import Qwen38Arch, Unit
-from .precision import FP8, NVFP4, Q4_K, S_FP8, S_NVFP4, resolve_checkpoint, stored_format
+from .precision import FP8, NVFP4, resolve_checkpoint
 from .quant.formats import (
     bf16_to_f32,
     dequantize_fp8_per_channel,
@@ -33,16 +43,9 @@ from .quant.formats import (
 from .safetensors_io import SafeTensorsDir
 
 SAMPLE_ROWS = 24
-# A candidate's quantized rows may not reconstruct the base rows worse than this multiple of
-# plain round-to-nearest on the same rows (plus a small absolute slack for tiny rows).
-#
-# Calibrated encoders minimize *output* error and pay for it in weight error: unsloth's GPTQ-style
-# NVFP4 MLPs measure 1.2-1.3x round-to-nearest, and 1.61x on the outlier-heavy layer-0 down_proj.
-# Substituted or random bytes land far above 5x. The bound separates those two regimes; it is
-# defense in depth, because a manifest cannot carry bytes at all -- only quantizers implemented in
-# this repository or pinned public checkpoints, which the evaluator regenerates itself.
-FIDELITY_RATIO = {NVFP4: 2.0, FP8: 2.0}
-FIDELITY_SLACK = 0.01
+REGEN_SAMPLES_PER_QUANTIZER = 6
+ANOMALY_WARN_RATIO = 2.0
+ANOMALY_REJECT_RATIO = 5.0
 
 
 @dataclass
@@ -51,19 +54,22 @@ class AuditResult:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     runtime: dict[str, str] = field(default_factory=dict)
-    fidelity: dict[str, float] = field(default_factory=dict)
+    lineage: dict[str, dict] = field(default_factory=dict)
+    anomaly: dict[str, float] = field(default_factory=dict)
 
     def fail(self, msg: str) -> None:
         self.ok = False
         self.errors.append(msg)
 
     def to_dict(self) -> dict:
+        worst = sorted(self.anomaly.items(), key=lambda kv: -kv[1])[:10]
         return {"ok": self.ok, "errors": self.errors[:200], "n_errors": len(self.errors),
-                "warnings": self.warnings[:50], "runtime": self.runtime, "fidelity": self.fidelity}
+                "warnings": self.warnings[:50], "runtime": self.runtime, "lineage": self.lineage,
+                "anomaly_worst_ratio": dict(worst)}
 
 
 def describe(ckpt_dir: str | Path) -> dict[str, str]:
-    """Runtime precision label per unit, e.g. {'L0.gdn.qkv': 'FP8', 'L3.attn.q': 'Q4_K(fp8)'}."""
+    """Selected format per unit as the loader resolves it, e.g. {'L3.attn.q': 'Q4_K(fp8)'}."""
     cfg = json.loads((Path(ckpt_dir) / "config.json").read_text())
     units = Qwen38Arch.from_config(cfg).units()
     with SafeTensorsDir(ckpt_dir) as ck:
@@ -79,98 +85,204 @@ def _rel(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.linalg.norm(a - b) / nb) if nb > 0 else float(np.linalg.norm(a))
 
 
-def _fidelity(ck: SafeTensorsDir, base: SafeTensorsDir, unit: Unit, precision: str, res: AuditResult) -> None:
-    for lin in unit.linears:
-        rows = _rows(lin.rows)
-        w = bf16_to_f32(base.array(lin.prefix + ".weight", "<u2")[rows].reshape(-1)).reshape(len(rows), lin.cols)
-        if precision == NVFP4:
-            wp = ck.get(lin.prefix + ".weight_packed")
-            if wp is not None:
-                packed = ck.array(lin.prefix + ".weight_packed", "u1").reshape(lin.rows, -1)[rows]
-                g = float(ck.array(lin.prefix + ".weight_global_scale", "<f4").reshape(-1)[0])
-                ws2 = 1.0 / g
-            else:
-                packed = ck.array(lin.prefix + ".weight", "u1").reshape(lin.rows, -1)[rows]
-                ws2 = float(ck.array(lin.prefix + ".weight_scale_2", "<f4").reshape(-1)[0])
-            scales = ck.array(lin.prefix + ".weight_scale", "u1").reshape(lin.rows, -1)[rows]
-            got = _rel(dequantize_nvfp4(packed, scales, ws2), w)
-            # RTN reference with the candidate's own global scale, so a calibrated global scale
-            # is compared like for like.
-            ref = _rel(dequantize_nvfp4(*quantize_nvfp4(w, global_amax=ws2 * 6.0 * 448.0)), w)
+def anomaly_ratio(ck: SafeTensorsDir, base: SafeTensorsDir, lin, fmt: str) -> float:
+    """Sampled-row reconstruction error of the stored tensor divided by round-to-nearest's."""
+    rows = _rows(lin.rows)
+    w = bf16_to_f32(base.array(lin.prefix + ".weight", "<u2")[rows].reshape(-1)).reshape(len(rows), lin.cols)
+    if fmt == NVFP4:
+        if ck.get(lin.prefix + ".weight_packed") is not None:
+            packed = ck.array(lin.prefix + ".weight_packed", "u1").reshape(lin.rows, -1)[rows]
+            ws2 = 1.0 / float(ck.array(lin.prefix + ".weight_global_scale", "<f4").reshape(-1)[0])
         else:
-            codes = ck.array(lin.prefix + ".weight", "u1").reshape(lin.rows, lin.cols)[rows]
-            scale = ck.array(lin.prefix + ".weight_scale", "<u2").reshape(-1)[rows]
-            got = _rel(dequantize_fp8_per_channel(codes, scale), w)
-            ref = _rel(dequantize_fp8_per_channel(*quantize_fp8_per_channel(w)), w)
-        res.fidelity[lin.prefix] = round(got, 5)
-        if got > FIDELITY_RATIO[precision] * ref + FIDELITY_SLACK:
-            res.fail(f"{lin.prefix}: {precision} reconstruction error {got:.4f} exceeds "
-                     f"{FIDELITY_RATIO[precision]}x round-to-nearest ({ref:.4f}) -- not a faithful encoding")
+            packed = ck.array(lin.prefix + ".weight", "u1").reshape(lin.rows, -1)[rows]
+            ws2 = float(ck.array(lin.prefix + ".weight_scale_2", "<f4").reshape(-1)[0])
+        scales = ck.array(lin.prefix + ".weight_scale", "u1").reshape(lin.rows, -1)[rows]
+        got = _rel(dequantize_nvfp4(packed, scales, ws2), w)
+        ref = _rel(dequantize_nvfp4(*quantize_nvfp4(w, global_amax=ws2 * 6.0 * 448.0)), w)
+    else:
+        codes = ck.array(lin.prefix + ".weight", "u1").reshape(lin.rows, lin.cols)[rows]
+        scale = ck.array(lin.prefix + ".weight_scale", "<u2").reshape(-1)[rows]
+        got = _rel(dequantize_fp8_per_channel(codes, scale), w)
+        ref = _rel(dequantize_fp8_per_channel(*quantize_fp8_per_channel(w)), w)
+    return (got + 1e-9) / (ref + 1e-9)
 
 
-def audit(ckpt_dir: str | Path, manifest: Manifest, base_dir: str | Path, baseline_dir: str | Path,
-          check_bytes: bool = True, check_fidelity: bool = True) -> AuditResult:
+def _bytes_of(data) -> bytes:
+    return np.ascontiguousarray(data).tobytes() if isinstance(data, np.ndarray) else bytes(data)
+
+
+def _sample_units(units: list[Unit], seed: str, k: int) -> list[Unit]:
+    if len(units) <= k:
+        return list(units)
+    ranked = sorted(units, key=lambda u: hashlib.sha256(f"{seed}:{u.id}".encode()).hexdigest())
+    picked = {units[0].id, units[-1].id} | {u.id for u in ranked[: k - 2]}
+    return [u for u in units if u.id in picked]
+
+
+def replay_cache_dir() -> Path:
+    return Path(os.environ.get("BITTRELLIS_REPLAY_CACHE", Path.home() / ".cache/bittrellis/replay"))
+
+
+def _replay_key(qz: Q.Quantizer, units: list[Unit], assignments: dict[str, Assignment], unit: Unit) -> str:
+    """Identity of a regenerated unit: the quantizer version, the base weights, and -- for sequential
+    quantizers -- every assignment of that quantizer up to and including the unit (its pipeline prefix)."""
+    from .lineage import load_lock
+
+    base_rev = load_lock()["sources"]["base"]["revision"]
+    if qz.replay_mode == "sequential":
+        prefix = [f"{u.id}={assignments[u.id].key()}" for u in units[: units.index(unit) + 1] if assignments[u.id].quantizer == qz.name]
+    else:
+        prefix = [f"{unit.id}={assignments[unit.id].key()}"]
+    return hashlib.sha256(json.dumps([qz.ref, base_rev, prefix]).encode()).hexdigest()
+
+
+def _check_regenerable(qz: Q.Quantizer, units: list[Unit], assignments: dict[str, Assignment],
+                       ck: SafeTensorsDir, ctx: Q.QuantContext, seed: str, res: AuditResult) -> dict:
+    mine = [u for u in units if assignments[u.id].quantizer == qz.name]
+    sampled = _sample_units(mine, seed, REGEN_SAMPLES_PER_QUANTIZER)
+    targets = {u.id for u in sampled}
+    cache = replay_cache_dir()
+    # Replays are shared: a unit whose replay key was regenerated before (by any candidate) is checked
+    # against the cached tensor hashes instead of being rebuilt.
+    cached_hits = 0
+    for u in sampled:
+        entry = cache / f"{_replay_key(qz, units, assignments, u)}.json"
+        if entry.exists():
+            want = json.loads(entry.read_text())
+            for name, digest in want.items():
+                if ck.get(name) is None or ck.sha256(name) != digest:
+                    res.fail(f"{name}: does not match a regeneration by {qz.ref} -- not produced by the declared quantizer")
+            targets.discard(u.id)
+            cached_hits += 1
+    remaining = set(targets)
+    qz.begin(ctx)
+    replayed = 0
+    # Sequential quantizers are replayed in pipeline order from the first unit, because a deep
+    # tensor may depend on every quantized tensor before it; independent ones only rebuild samples.
+    for u in (mine if qz.replay_mode == "sequential" else sampled):
+        if not remaining:
+            break
+        remaining.discard(u.id)
+        digests: dict[str, str] = {}
+        for lin in u.linears:
+            produced = encode_unit(qz, ctx, u, lin, assignments[u.id])
+            replayed += 1
+            if u.id not in targets:
+                continue
+            for suf, _dtype, _shape, data in produced:
+                name = lin.prefix + suf
+                blob = _bytes_of(data)
+                digests[name] = hashlib.sha256(blob).hexdigest()
+                if ck.get(name) is None or bytes(ck.raw(name)) != blob:
+                    res.fail(f"{name}: does not match a regeneration by {qz.ref} -- not produced by the declared quantizer")
+        if u.id in targets and digests:
+            try:
+                cache.mkdir(parents=True, exist_ok=True)
+                (cache / f"{_replay_key(qz, units, assignments, u)}.json").write_text(json.dumps(digests))
+            except OSError:
+                pass
+    return {"lineage": "regenerable", "replay_mode": qz.replay_mode, "units": len(mine),
+            "sampled": sorted({u.id for u in sampled}), "replayed_linears": replayed, "replay_cache_hits": cached_hits}
+
+
+def audit(ckpt_dir: str | Path, manifest: Manifest, source_dirs: dict[str, Path],
+          check_bytes: bool = True, verify_sources: bool = True, log=None) -> AuditResult:
     res = AuditResult()
-    ckpt_dir, base_dir, baseline_dir = Path(ckpt_dir), Path(base_dir), Path(baseline_dir)
+    ckpt_dir = Path(ckpt_dir)
+    frozen_dir = Path(source_dirs["gittensor_nvfp4"])
     cfg = json.loads((ckpt_dir / "config.json").read_text())
-    base_cfg = json.loads((baseline_dir / "config.json").read_text())
+    frozen_cfg = json.loads((frozen_dir / "config.json").read_text())
     if "quantization_config" not in cfg:
         res.fail("config.json has no quantization_config (the loader rejects the directory)")
     strip = lambda c: {k: v for k, v in c.items() if k != "quantization_config"}  # noqa: E731
-    if strip(cfg) != strip(base_cfg):
-        res.fail("config.json differs from the baseline outside quantization_config")
-    arch = Qwen38Arch.from_config(base_cfg)
-    units = arch.units()
+    if strip(cfg) != strip(frozen_cfg):
+        res.fail("config.json differs from the shipped config outside quantization_config")
+    units = Qwen38Arch.from_config(frozen_cfg).units()
     try:
-        expanded = manifest.expand(units)
+        assignments = manifest.expand_assignments(units)
     except ValueError as e:
         res.fail(f"manifest: {e}")
         return res
 
-    with SafeTensorsDir(ckpt_dir) as ck, SafeTensorsDir(base_dir) as base, SafeTensorsDir(baseline_dir) as bl:
-        resolved = resolve_checkpoint(ck, units)
-        res.runtime = {uid: r.label for uid, r in resolved.items()}
-        expected_names: set[str] = set()
-        searchable = set()
-        for u in units:
-            want = expanded[u.id]
-            got = resolved[u.id]
-            if got.precision is None:
-                res.fail(f"{u.id}: does not load ({got.note})")
-                continue
-            if got.label != want:
-                res.fail(f"{u.id}: manifest says {want}, runtime would execute {got.label}")
-                continue
-            for lin in u.linears:
-                searchable.add(lin.prefix)
-                fmt, _ = stored_format(ck, lin)
-                if want == Q4_K:
-                    expected_names.add(lin.prefix + ".weight")
-                    if check_bytes and ck.sha256(lin.prefix + ".weight") != base.sha256(lin.prefix + ".weight"):
-                        res.fail(f"{lin.prefix}.weight: BF16 bytes differ from the base model")
-                elif fmt == S_FP8:
-                    expected_names.update({lin.prefix + ".weight", lin.prefix + ".weight_scale"})
-                elif fmt == S_NVFP4:
-                    names = ([".weight_packed", ".weight_scale", ".weight_global_scale", ".input_global_scale"]
-                             if ck.get(lin.prefix + ".weight_packed") else
-                             [".weight", ".weight_scale", ".weight_scale_2", ".input_scale"])
-                    expected_names.update(lin.prefix + s for s in names if ck.get(lin.prefix + s) is not None)
-            if check_fidelity and want in (NVFP4, FP8):
-                _fidelity(ck, base, u, want, res)
+    used_sources = {"base", "gittensor_nvfp4"} | {Q.get(a.quantizer).source_id for a in assignments.values()
+                                                  if Q.get(a.quantizer).lineage == "attested"}
+    if verify_sources:
+        for s in sorted(used_sources):
+            if s not in source_dirs:
+                res.fail(f"source {s} not provided")
+                return res
+            try:
+                require_verified(s, source_dirs[s], log=log)
+            except LineageError as e:
+                res.fail(str(e))
+                return res
 
-        for name, ref in bl.tensors.items():
-            prefix, _, _ = name.rpartition(".")
-            if prefix in searchable:
-                continue
-            expected_names.add(name)
-            t = ck.get(name)
-            if t is None:
-                res.fail(f"{name}: missing (present in baseline)")
-            elif (t.dtype, t.shape) != (ref.dtype, ref.shape):
-                res.fail(f"{name}: {t.dtype}{list(t.shape)} != baseline {ref.dtype}{list(ref.shape)}")
-            elif check_bytes and ck.sha256(name) != bl.sha256(name):
-                res.fail(f"{name}: bytes differ from the baseline")
-        extra = sorted(set(ck.tensors) - expected_names)
-        if extra:
-            res.fail(f"{len(extra)} unexpected tensors, e.g. {extra[:5]}")
+    handles = {s: SafeTensorsDir(source_dirs[s]) for s in used_sources}
+    try:
+        base, frozen = handles["base"], handles["gittensor_nvfp4"]
+        ctx = Q.QuantContext(base=base, sources=handles)
+        with SafeTensorsDir(ckpt_dir) as ck:
+            resolved = resolve_checkpoint(ck, units)
+            res.runtime = {uid: r.label for uid, r in resolved.items()}
+            expected: set[str] = set()
+            searchable: set[str] = set()
+            for u in units:
+                a = assignments[u.id]
+                got = resolved[u.id]
+                for lin in u.linears:
+                    searchable.add(lin.prefix)
+                if got.precision is None:
+                    res.fail(f"{u.id}: does not load ({got.note})")
+                    continue
+                if got.label != a.format:
+                    res.fail(f"{u.id}: manifest selects {a.format}, the loader would execute {got.label}")
+                    continue
+                qz = Q.get(a.quantizer)
+                for lin in u.linears:
+                    if qz.lineage == "regenerable":
+                        names = [lin.prefix + s for s, _, _ in _declared(qz, ctx, u, lin, a.format)]
+                    else:
+                        names = [lin.prefix + s for s, _, _, _ in qz.encode(ctx, u, lin, a.format)]
+                    expected.update(names)
+                    if check_bytes and qz.lineage in ("runtime", "attested"):
+                        src = base if qz.lineage == "runtime" else handles[qz.source_id]
+                        for n in names:
+                            if ck.get(n) is None or src.get(n) is None or ck.sha256(n) != src.sha256(n):
+                                res.fail(f"{n}: bytes differ from {'the BF16 base' if qz.lineage == 'runtime' else qz.source_id}")
+                    if a.format in (NVFP4, FP8) and all(ck.get(n) is not None for n in names):
+                        ratio = anomaly_ratio(ck, base, lin, a.format)
+                        res.anomaly[lin.prefix] = round(ratio, 3)
+                        if ratio > ANOMALY_REJECT_RATIO:
+                            res.fail(f"{lin.prefix}: reconstruction error {ratio:.1f}x round-to-nearest -- substituted bytes")
+                        elif ratio > ANOMALY_WARN_RATIO:
+                            res.warnings.append(f"{lin.prefix}: reconstruction error {ratio:.2f}x round-to-nearest")
+            for name, ref in frozen.tensors.items():
+                prefix, _, _ = name.rpartition(".")
+                if prefix in searchable:
+                    continue
+                expected.add(name)
+                t = ck.get(name)
+                if t is None:
+                    res.fail(f"{name}: missing (present in the shipped checkpoint)")
+                elif (t.dtype, t.shape) != (ref.dtype, ref.shape):
+                    res.fail(f"{name}: {t.dtype}{list(t.shape)} != shipped {ref.dtype}{list(ref.shape)}")
+                elif check_bytes and ck.sha256(name) != frozen.sha256(name):
+                    res.fail(f"{name}: bytes differ from the shipped checkpoint")
+            extra = sorted(set(ck.tensors) - expected)
+            if extra:
+                res.fail(f"{len(extra)} unexpected tensors, e.g. {extra[:5]}")
+
+            if res.ok:
+                seed = manifest.candidate_id(units)
+                for qname in sorted({a.quantizer for a in assignments.values()}):
+                    qz = Q.get(qname)
+                    if qz.lineage == "regenerable":
+                        res.lineage[qz.ref] = _check_regenerable(qz, units, assignments, ck, ctx, seed, res)
+                    else:
+                        res.lineage[qz.ref] = {"lineage": qz.lineage, "source": qz.source_id or "base",
+                                               "units": sum(1 for a in assignments.values() if a.quantizer == qname),
+                                               "bytes_checked": check_bytes}
+    finally:
+        for h in handles.values():
+            h.close()
     return res

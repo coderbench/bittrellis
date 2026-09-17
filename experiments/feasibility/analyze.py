@@ -1,6 +1,6 @@
-"""Answer feasibility questions A–G from artifacts and write results/feasibility/analysis.json.
+"""Answer the feasibility questions A-G from seed artifacts; writes results/feasibility/analysis.json.
 
-Usage: python experiments/feasibility/analyze.py [artifacts/feasibility] [results/feasibility]
+Usage: python experiments/feasibility/analyze.py [results/feasibility/artifacts] [results/feasibility]
 """
 
 from __future__ import annotations
@@ -13,95 +13,69 @@ import numpy as np
 
 from bittrellis.eval.logits import block_bootstrap_ci, paired_delta
 from bittrellis.frontier.pareto import dominates
-from bittrellis.frontier.report import feasibility_report, load_rows
+from bittrellis.frontier.report import load_rows, write_report
 from bittrellis.track import REPO_ROOT, load_track
 
-GDN_PARAMS = 48 * (10240 * 5120 + 6144 * 5120 + 5120 * 6144)
-ATTN_PARAMS = 16 * (12288 * 5120 + 1024 * 5120 * 2 + 5120 * 6144)
-MLP_PARAMS = 64 * 3 * 17408 * 5120
+INCUMBENT = "V0-baseline-rebuild"
 
 
 def _npz(art: Path) -> dict:
-    p = art / "kl_positions.npz"
-    return dict(np.load(p)) if p.exists() else {}
-
-
-def _perf(art: Path) -> dict | None:
-    p = art / "performance.json"
-    return json.loads(p.read_text()) if p.exists() else None
-
-
-def _speed_delta(a: dict, b: dict, key: str, ctx: str = "4096") -> dict:
-    """Relative change b vs a at one context; 'clear' only if > 2% (reps are lower medians of 2)."""
-    va = a["contexts"][ctx][key] if "contexts" in a else a[key]
-    vb = b["contexts"][ctx][key] if "contexts" in b else b[key]
-    rel = (vb - va) / va
-    return {"a": va, "b": vb, "rel": rel, "clear": abs(rel) > 0.02}
+    return dict(np.load(art / "kl_positions.npz"))
 
 
 def main(art_dir: Path, out_dir: Path) -> dict:
     track = load_track("HPC-01")
-    arts = {d.name: d for d in sorted(art_dir.iterdir()) if (d / "candidate.json").exists()}
-    r0 = arts["R0"]
-    r0_kl = _npz(r0)
-    r0_perf = _perf(r0)
-    res: dict = {"vs_R0": {}}
+    arts = {d.name: d for d in sorted(art_dir.iterdir()) if (d / "quality.json").exists()}
+    inc = arts[INCUMBENT]
+    inc_kl = _npz(inc)
+    inc_perf = json.loads((inc / "performance.json").read_text())
+    res: dict = {"incumbent": INCUMBENT, "vs_incumbent": {}}
     for name, d in arts.items():
-        if name == "R0" or not (d / "kl_positions.npz").exists():
+        if name == INCUMBENT:
             continue
-        entry = {"kl": paired_delta(r0_kl, _npz(d))}
-        perf = _perf(d)
-        if perf and r0_perf:
-            key_prefill = "prefill_pp" if "contexts" in perf else "prefill_tps"
-            entry["decode"] = _speed_delta(r0_perf, perf, "decode_tps")
-            entry["prefill"] = _speed_delta(r0_perf, perf, key_prefill) if "contexts" in perf else None
-            entry["vram_gib"] = {"a": r0_perf["vram_gib"], "b": perf["vram_gib"], "delta": perf["vram_gib"] - r0_perf["vram_gib"]}
-        res["vs_R0"][name] = entry
-
-    rep = r0 / "reproducibility.json"
-    ident = art_dir / "V0-tensor-identity.json"
-    a_scores = json.loads(rep.read_text()) if rep.exists() else None
-    a_tensors = json.loads(ident.read_text()) if ident.exists() else None
-    res["A_reproducible"] = bool(a_scores and all(v["identical"] for v in a_scores.values())
-                                 and a_tensors and a_tensors["identical"])
-    variants = {k: v for k, v in res["vs_R0"].items() if k.startswith("V") and not k.startswith("V0-")}
-    res["B_quality_moves"] = any(v["kl"]["significant"] for v in variants.values())
-    res["C_speed_moves"] = any((v.get("decode") or {}).get("clear") or (v.get("prefill") or {}).get("clear")
-                               for v in variants.values())
-
-    rows = load_rows([art_dir], track)
-    r0_row = next(r for r in rows if r.id == "R0")
-    mixed = [r for r in rows if r.kind == "candidate" and not r.name.startswith(("V0-", "V1-"))]
-    eps = track["frontier"].get("epsilon")
-    res["D_mixed_not_dominated_by_R0"] = [r.name for r in mixed if r.valid and not dominates(r0_row, r, eps)]
-    res["D_mixed_dominating_R0"] = [r.name for r in mixed if r.valid and dominates(r, r0_row, eps)]
-
-    def dkl(name: str) -> dict | None:
-        return variants.get(name, {}).get("kl")
-
-    v4, v5, v6 = dkl("V4-gdn-q4k"), dkl("V5-attn-q4k"), dkl("V6-mlp-q4k")
-    if v4 and v5 and v6:
-        per_b = {"gdn": v4["delta_kl"] / (GDN_PARAMS / 1e9), "attn": v5["delta_kl"] / (ATTN_PARAMS / 1e9),
-                 "mlp": v6["delta_kl"] / (MLP_PARAMS / 1e9)}
-        res["E_sensitivity_per_billion_weights"] = per_b
-    if all(n in arts for n in ("V4-gdn-q4k", "V6-mlp-q4k", "V9-gdn-q4k-mlp-q4k")):
-        # Per-position interaction KL9 - KL4 - KL6 + KL0: zero if the two changes add up.
-        k4, k6, k9 = _npz(arts["V4-gdn-q4k"]), _npz(arts["V6-mlp-q4k"]), _npz(arts["V9-gdn-q4k-mlp-q4k"])
-        streams = sorted(k[:-3] for k in r0_kl if k.endswith(".kl"))
-        terms = [k9[f"{s}.kl"].astype(np.float64) - k4[f"{s}.kl"] - k6[f"{s}.kl"] + r0_kl[f"{s}.kl"] for s in streams]
-        lo, hi = block_bootstrap_ci(terms, n_boot=2000)
-        res["F_interaction"] = {
-            "interaction_kl": float(np.concatenate(terms).mean()), "ci95": [lo, hi], "interaction": bool(lo > 0 or hi < 0),
-            "by_stream": {s: float(t.mean()) for s, t in zip(streams, terms, strict=True)},
+        perf = json.loads((d / "performance.json").read_text())
+        res["vs_incumbent"][name] = {
+            "rp_kl": paired_delta(inc_kl, _npz(d)),
+            "decode_rel": (perf["decode_tps"] - inc_perf["decode_tps"]) / inc_perf["decode_tps"],
+            "prefill_rel": (perf["prefill_tps"] - inc_perf["prefill_tps"]) / inc_perf["prefill_tps"],
+            "peak_gpu_delta_gib": perf["peak_gpu_gib"] - inc_perf["peak_gpu_gib"],
         }
-    res["rows"] = {r.name: {"valid": r.valid, "frontier": r.frontier, "gain": r.gain, "gates": r.gate_failures} for r in rows}
+
+    rep = inc / "reproducibility.json"
+    ident = art_dir / "V0-tensor-identity.json"
+    res["A_reproducible"] = bool(rep.exists() and all(v["identical"] for v in json.loads(rep.read_text()).values())
+                                 and ident.exists() and json.loads(ident.read_text())["identical"])
+    variants = {k: v for k, v in res["vs_incumbent"].items() if k.startswith("V")}
+    res["B_quality_moves"] = [k for k, v in variants.items() if v["rp_kl"]["significant"]]
+    res["C_speed_or_memory_moves"] = [k for k, v in variants.items()
+                                      if abs(v["decode_rel"]) > 0.02 or abs(v["prefill_rel"]) > 0.03 or abs(v["peak_gpu_delta_gib"]) > 0.1]
+
+    rows, cmp = load_rows([art_dir], track)
+    floors = track["frontier"]["epsilon_floor"]
+    inc_row = next(r for r in rows if r.name == INCUMBENT)
+    internal = [r for r in rows if r.kind == "internal" and r.name != INCUMBENT]
+    res["D_not_dominated_by_incumbent"] = [r.name for r in internal if r.valid and not dominates(inc_row, r, floors, cmp)]
+    res["D_dominating_incumbent"] = [r.name for r in internal if r.valid and dominates(r, inc_row, floors, cmp)]
+
+    names = ("V4-gdn-q4k", "V6-mlp-q4k", "V9-gdn-q4k-mlp-q4k")
+    if all(n in arts for n in names):
+        k4, k6, k9 = (_npz(arts[n]) for n in names)
+        streams = sorted(k[:-3] for k in inc_kl if k.endswith(".kl"))
+        terms = [k9[f"{s}.kl"].astype(np.float64) - k4[f"{s}.kl"] - k6[f"{s}.kl"] + inc_kl[f"{s}.kl"] for s in streams]
+        lo, hi = block_bootstrap_ci(terms, n_boot=2000)
+        res["F_interaction"] = {"interaction": float(np.concatenate(terms).mean()), "ci95": [lo, hi],
+                                "significant": bool(lo > 0 or hi < 0),
+                                "by_stream": {s: float(t.mean()) for s, t in zip(streams, terms, strict=True)}}
+    res["frontier"] = [r.name for r in rows if r.frontier]
+    res["rows"] = {r.name: {"kind": r.kind, "valid": r.valid, "frontier": r.frontier, "gain": r.gain,
+                            "gates": r.gate_failures} for r in rows}
     out_dir.mkdir(parents=True, exist_ok=True)
-    feasibility_report([art_dir], track, out_dir)
+    write_report([art_dir], track, out_dir)
     (out_dir / "analysis.json").write_text(json.dumps(res, indent=2) + "\n")
     return res
 
 
 if __name__ == "__main__":
-    a = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO_ROOT / "artifacts/feasibility"
+    a = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO_ROOT / "results/feasibility/artifacts"
     o = Path(sys.argv[2]) if len(sys.argv) > 2 else REPO_ROOT / "results/feasibility"
     print(json.dumps(main(a, o), indent=2))
