@@ -508,6 +508,8 @@ class Evaluator:
                         "--reference", self.args.reference, "--sample-secret-file", str(self.secret_path)] + self.env_args
         reuse = ["--audit-json", str(art / "audit.json")]
         if untrusted and not resume:
+            manifest_text = subprocess.run(["git", "show", f"{sha}:{manifests[0]}"], cwd=REPO_ROOT, capture_output=True, text=True).stdout
+            self._fresh_untrusted(utr, code, sha, manifest, manifest_text, log)  # nothing the build left behind survives
             failed = self._isolated_audit(cid, keys, units, manifest, code, utr, work, ckpt, art, xrun, log)
             if failed is not None:
                 return finish("audit", "audit", "BitTrellis evaluator: **audit failed**.\n\n" + "\n".join(f"- {e}" for e in failed[:20]),
@@ -581,6 +583,14 @@ class Evaluator:
             return run
         python_bin = str(Path(sys.executable).parent)
         return lambda cmd, cwd, log, timeout=6 * 3600: self.sandbox.run(cmd, cwd, log, python_bin, timeout)
+
+    def _fresh_untrusted(self, utr: Path, code: Path, sha: str, manifest: Path, manifest_text: str, log: Path) -> None:
+        run(["git", "worktree", "remove", "--force", str(code)], REPO_ROOT, log)
+        shutil.rmtree(utr, ignore_errors=True)
+        utr.mkdir(parents=True)
+        run(["git", "worktree", "add", "--force", "--detach", str(code), sha], REPO_ROOT, log)
+        manifest.write_text(manifest_text)
+        self.sandbox.own(utr)
 
     def _isolated_audit(self, cid, keys, units, manifest, code, utr, work, ckpt, art, xrun, log) -> list[str] | None:
         """Contributed code regenerates secret samples without the checkpoint; trusted code compares."""
