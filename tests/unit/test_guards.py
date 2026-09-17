@@ -172,3 +172,9 @@ def test_sketches_compare_stored_bytes_across_layouts(tiny_all):
     assert F.similarity(stored, refs["unsloth@v1"])[0] == 1.0
     assert set(refs) >= {"baseline@v1", "unsloth@v1", "rtn@v1"}
     assert F.similarity(F.sketch(ct, prefixes, "s3cret", 16), F.sketch(ct, prefixes, "other", 16))[0] < 0.5  # offsets follow the secret
+
+
+def test_observations_in_one_pass_are_strictly_ordered(tmp_path):
+    o = G.Observations(tmp_path)
+    times = [o.observe(i, "x", f"{i:040d}")["first_seen"] for i in range(5)]
+    assert times == sorted(times) and len(set(times)) == 5

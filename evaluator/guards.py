@@ -31,7 +31,7 @@ GIB = 1024**3
 
 
 def utcnow() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")  # microseconds: one pass observes many PRs
 
 
 # ── observations: the evaluator's append-only record ───────────────────────────────────────────
