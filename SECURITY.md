@@ -21,6 +21,7 @@ PR. Credible reports that close a real gap are treated as high-value contributio
 | Copying another miner's open PR | first-seen record per head commit; near-copies are ranked with the original and earn only what they add ([guards](docs/guards.md)) |
 | Contributed code reading secrets or faking its audit | unprivileged account, allow-listed environment; regenerates secret samples without access to its checkpoint; trusted code compares ([guards](docs/guards.md#isolation-contributed-code-produces-trusted-code-judges)) |
 | Renaming an existing encoder | quantizers compared by output bytes on seeded probes and the real checkpoint, not source text |
+| Losing or disputing the score history | every pass pushes write-once records, first-seen evidence and accepted artifacts to a separate repository; pushes are never forced |
 | Malicious code in PRs | manifest-only PRs run trusted `main` code; code PRs need a maintainer `eval-approved` label; evaluator paths are never auto-evaluated |
 
 ## Evaluator host hygiene

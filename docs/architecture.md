@@ -64,5 +64,6 @@
 | `data/reference/hpc01-public-v2-k256/` | no (regenerable, hash-recorded) | BF16 top-256 per position |
 | `results/feasibility/artifacts/` | yes | internal-frontier seed candidates |
 | `<eval root>/accepted/` | evaluator host | merged, frontier-moving miner artifacts |
+| `<eval root>/ledger/` | pushed to its own repository each pass | public score records: one write-once record per evaluated PR head, the first-seen records, the frontier and the accepted artifacts ([ledger.py](../evaluator/ledger.py)) |
 | private holdout directory | never | validator-only text, reference, results |
 | `~/.cache/bittrellis/replay/` | host cache | regenerated tensor hashes by replay key |

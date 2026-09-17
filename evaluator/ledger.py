@@ -1,0 +1,95 @@
+"""The public score record: what was measured, for which commit, and what it earned.
+
+The evaluator runs on a rented GPU box. Its state -- who submitted what first, which results are
+accepted, what each PR scored -- lived only on that disk, so returning the box would take the
+frontier and the "who was first" evidence with it. After every pass the evaluator writes this
+directory and pushes it to a repository of its own (evaluator/publish_ledger.py).
+
+    <ledger>/
+      README.md                        current frontier, regenerated each pass
+      <epoch>/frontier.json            the ranking after the pass
+      <epoch>/results/<pr>-<head>.json one write-once record per evaluated PR head
+      <epoch>/observations/*.json      first-seen records, copied from the evaluator's own store
+      <epoch>/accepted/<name>/*        artifacts of merged, frontier-moving results
+
+Anyone can re-derive every score from `accepted/` and a result record:
+
+    bittrellis frontier <ledger>/<epoch>/accepted <your artifact>
+
+What never enters the ledger: the private holdout (only PASS/FAIL reaches a record), the evaluator's
+secret, tokens, and the sandbox's contributed code.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+
+RECORD_FIELDS = ("pr", "head", "author", "first_seen", "kind", "status", "tier", "candidate", "name",
+                 "gain", "references", "skipped", "screen")
+ARTIFACT_FILES = ("candidate.json", "quality.json", "performance.json", "tasks.json", "correctness.json",
+                  "audit.json", "environment.json", "holdout.json", "kl_positions.npz")
+
+
+class Ledger:
+    def __init__(self, root: Path, epoch: str):
+        self.root, self.epoch = Path(root), epoch
+        self.dir = self.root / epoch
+        for sub in ("results", "observations", "accepted"):
+            (self.dir / sub).mkdir(parents=True, exist_ok=True)
+
+    def record(self, entry: dict, row: dict | None) -> Path:
+        """Write one PR head's outcome. Write-once: a later pass never rewrites a published record."""
+        path = self.dir / "results" / f"pr-{entry['pr']:06d}-{entry['head'][:12]}.json"
+        doc = {k: entry.get(k) for k in RECORD_FIELDS if entry.get(k) is not None}
+        doc["row"] = row
+        if path.exists() and json.loads(path.read_text()) == doc:
+            return path
+        path.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
+        return path
+
+    def observations(self, source: Path) -> int:
+        """Copy the first-seen records: the evidence for who submitted a recipe first."""
+        n = 0
+        for src in sorted(Path(source).glob("pr-*.json")):
+            dst = self.dir / "observations" / src.name
+            if not dst.exists() or dst.read_text() != src.read_text():
+                shutil.copyfile(src, dst)
+                n += 1
+        return n
+
+    def accept(self, name: str, artifact: Path) -> None:
+        """Publish a merged, frontier-moving result so anyone can re-rank against it."""
+        dst = self.dir / "accepted" / name
+        dst.mkdir(parents=True, exist_ok=True)
+        for f in ARTIFACT_FILES:
+            src = Path(artifact) / f
+            if src.exists():
+                shutil.copyfile(src, dst / f)
+
+    def frontier(self, doc: dict) -> None:
+        (self.dir / "frontier.json").write_text(json.dumps(doc, indent=1) + "\n")
+        (self.root / "README.md").write_text(render_readme(doc, self.epoch))
+
+
+def render_readme(frontier: dict, epoch: str) -> str:
+    rows = sorted((r for r in frontier.get("internal", [])), key=lambda r: r["rp_kl"])
+    lines = [f"# BitTrellis score records ({epoch})", "",
+             "> Every evaluated pull request, the frontier it was ranked against, and the artifacts behind both.",
+             "", "Written by the evaluator after each pass. Re-derive any score yourself:", "",
+             "```bash", f"bittrellis frontier {epoch}/accepted <your artifact>", "```", "",
+             "| | Checkpoint | RP-KL ↓ | tasks ↑ | decode tok/s ↑ | prefill 4K tok/s ↑ | peak GPU GiB ↓ | FG-2 |",
+             "|---|---|---:|---:|---:|---:|---:|---:|"]
+    for r in rows:
+        mark = "★" if r.get("frontier") else " "
+        tasks = f"{r['tasks_passed']}/{r['tasks_n']}" if r.get("tasks_n") else "—"
+        gain = f"{100 * (r['frontier_gain'] or 0):.3f}%" if r.get("frontier_gain") is not None else "—"
+        lines.append(f"| {mark} | {r['name']} | {r['rp_kl']:.4f} | {tasks} | {r['decode_tps']:.1f} | "
+                     f"{r['prefill_tps']:,.0f} | {r['peak_gpu_gib']:.2f} | {gain} |")
+    lines += ["", f"Epoch `{epoch}` · rules: [bittrellis](https://github.com/coderbench/bittrellis) "
+              "([specification](https://github.com/coderbench/bittrellis/blob/main/docs/specification.md)).",
+              "", "`results/` holds one write-once record per evaluated pull-request head, `observations/` the "
+              "first-seen record that decides who submitted a recipe first, and `accepted/` the artifacts of "
+              "merged results. The private holdout never appears here: records carry PASS or FAIL only."]
+    return "\n".join(lines) + "\n"

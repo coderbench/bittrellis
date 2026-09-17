@@ -60,6 +60,7 @@ sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import guards as G  # noqa: E402
+from ledger import Ledger  # noqa: E402
 
 MANIFEST_GLOB = "manifests/*.yaml"
 CODE_GLOBS = ("bittrellis/quantizers/*", "bittrellis/search.py", "tests/*")
@@ -373,6 +374,7 @@ class Evaluator:
         self.secret = secret.read_text().strip()
         self.sandbox = None
         self.probe_seed = int(hashlib.sha256(f"{self.secret}:probe".encode()).hexdigest()[:8], 16)
+        self.ledger = Ledger(Path(args.ledger), self.epoch) if args.ledger else None
         self.py = [sys.executable, "-m", "bittrellis.cli"]
         self.env_args = ["--base", args.base, "--shipped", args.shipped, "--unsloth", args.unsloth]
         self.sources = {"base": Path(args.base), "gittensor_nvfp4": Path(args.shipped), "unsloth_nvfp4": Path(args.unsloth)}
@@ -436,7 +438,31 @@ class Evaluator:
             self.save()
         self.rerank(open_prs)
         self.mark_merge_first(open_prs)
+        self.publish_records()
         self.save()
+
+    def publish_records(self) -> None:
+        """Write the public score record and push it. A failed push never fails the pass."""
+        if not self.ledger:
+            return
+        self.ledger.observations(self.obs.dir)
+        for name in self._accepted_names():
+            self.ledger.accept(name, self.accepted / name)
+        frontier_json = self.root / "frontier.json"
+        paths = [self.args.seeds, str(self.accepted)]
+        if subprocess.run(self.py + ["frontier", *paths, "--out", str(frontier_json)], cwd=REPO_ROOT,
+                          capture_output=True, text=True).returncode == 0:
+            self.ledger.frontier(json.loads(frontier_json.read_text()))
+        if not self.args.ledger_remote:
+            return
+        try:
+            import publish_ledger as P
+
+            commit = P.publish(Path(self.args.ledger), self.args.ledger_remote, os.environ.get(P.TOKEN_ENV),
+                               f"records: {self.epoch} pass")
+            print(f"[ledger] published {commit}" if commit else "[ledger] nothing new")
+        except Exception as e:  # noqa: BLE001 - the records stay local and go out with the next pass
+            print(f"[ledger] not published: {e!r}")
 
     def _accepted_names(self) -> list[str]:
         return sorted(p.name for p in self.accepted.iterdir()) if self.accepted.exists() else []
@@ -480,6 +506,8 @@ class Evaluator:
         def finish(status: str, label: str | None = None, body: str | None = None, **extra) -> None:
             tier = tier_for(label or status, extra.get("gain"), REWARDS["tiers_fg2"])
             self.state[key] = {**self.state.get(key, {}), **base_entry, "status": status, "tier": tier, **extra}
+            if self.ledger and status not in RESCREEN:
+                self.ledger.record(self.state[key], extra.get("row"))
             if label:
                 self.gh.set_status_label(number, label)
                 self.gh.set_tier_label(number, tier)
@@ -790,7 +818,8 @@ class Evaluator:
         self._delete(ckpt)  # a skipped result that a later re-rank lifts is rebuilt (deterministic, CPU)
         row = next((r for r in frontier["internal"] if r["id"] == cand["id"]), {})
         return finish(label, label, body, artifact=str(art), candidate=cand["id"], name=cand["name"], references=refs,
-                      accepted=self._accepted_names(), skipped=skipped, screen=screen, gain=row.get("frontier_gain") or 0.0)
+                      accepted=self._accepted_names(), skipped=skipped, screen=screen, row=row,
+                      gain=row.get("frontier_gain") or 0.0)
 
     def _timings(self, art: Path) -> dict:
         p = art / "timings.json"
@@ -849,6 +878,8 @@ def main() -> int:
     ap.add_argument("--seeds", default=str(REPO_ROOT / "results/feasibility/artifacts"))
     ap.add_argument("--private", help="private holdout directory (see bittrellis/holdout.py)")
     ap.add_argument("--keep-checkpoints", action="store_true")
+    ap.add_argument("--ledger", default=os.environ.get("BT_LEDGER"), help="public score-record directory (evaluator/ledger.py)")
+    ap.add_argument("--ledger-remote", default=os.environ.get("BT_LEDGER_REMOTE"), help="repository the record is pushed to")
     ap.add_argument("--sandbox-user", default=os.environ.get("BT_SANDBOX_USER", "bt-sandbox"),
                     help="unprivileged account that runs contributed code (evaluator/setup_sandbox.sh)")
     ap.add_argument("--token-file", default=os.environ.get("BT_TOKEN_FILE"), help="checked to be unreadable by the sandbox")

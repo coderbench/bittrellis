@@ -52,6 +52,20 @@ Merging is payment, so a maintainer merges, never the bot.
 
 The bot never closes PRs (closing costs credibility); authors close dominated or duplicate PRs. Close PRs you are not pursuing: they reserve collateral and count toward the spam limit.
 
+## The public record
+
+After every pass the evaluator writes and pushes a score record to a repository of its own
+([`evaluator/ledger.py`](../evaluator/ledger.py), [`publish_ledger.py`](../evaluator/publish_ledger.py)):
+one write-once record per evaluated PR head (status, tier, FG-2, measured row, screen result), the
+first-seen records, the current frontier, and the artifacts of merged results. The GPU box is rented;
+the record outlives it. Re-derive any score yourself:
+
+```bash
+bittrellis frontier <ledger>/<epoch>/accepted <your artifact>
+```
+
+The private holdout never appears there: records carry PASS or FAIL only.
+
 ## Proposed registry entry
 
 For Gittensor's `gittensor/validator/weights/master_repositories.json`. The Gittensor team sets `emission_share` and the final multipliers; the rest mirrors SparkInfer's entry:

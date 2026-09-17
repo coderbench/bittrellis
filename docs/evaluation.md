@@ -77,6 +77,9 @@ Entering the [frontier](frontier.md) needs: audit, runtime correctness, RP-KL â‰
 top-1 â‰¥ 0.80, long-context guard (every BF16-retrievable needle at 8K/16K/32K), task guard, and a
 validator-only holdout PASS ([holdout.md](holdout.md)).
 
+Every pass publishes the outcome, the frontier and the accepted artifacts to the public score record
+([rewards.md](rewards.md#the-public-record)).
+
 ```bash
 bittrellis evaluate <checkpoint> --out artifacts/<name>          # everything
 bittrellis evaluate-public <checkpoint> --out artifacts/<name>   # audit + fidelity only

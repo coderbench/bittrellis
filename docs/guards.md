@@ -124,7 +124,7 @@ Green: credit. Grey: nothing new. Blue/yellow: waiting. Red: failure (darker is 
 | Maintainer actions | ![eval-approved](https://img.shields.io/badge/eval--approved-0e8a16?style=flat-square) ![copy-cleared](https://img.shields.io/badge/copy--cleared-0e8a16?style=flat-square) | evaluate contributed code in the sandbox · measure a PR held in `bt:copy-review` |
 | Paid tier | `eval:XL` … `eval:XS`, `eval:none`, `eval:REJECT` | the label Gittensor pays, see [rewards.md](rewards.md) |
 
-State: `<root>/state.json`.
+State: `<root>/state.json`. Every pass also publishes the first-seen records and each PR's outcome to the public score record ([rewards.md](rewards.md#the-public-record)).
 
 ## Known limits
 
