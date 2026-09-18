@@ -358,6 +358,10 @@ def cmd_holdout(args) -> int:
         print(f"epoch {epoch['epoch'] if epoch else 'MISSING epoch.json'}")
         print(f"  {'category':14s} {'files':>5s} {'tokens':>8s} {'needs':>8s}  status")
         for cat, d in inv.items():
+            if d["repeated_lines"] > holdout.MAX_REPEATED_LINES:
+                print(f"  {cat:14s} {d['files']:5d} {d['tokens']:8,d} {d['needs']:8,d}  "
+                      f"{d['repeated_lines']:.0%} of its lines are repeats: add new text, not copies")
+                continue
             state = f"needs {d['missing']:,} more tokens (~{d['missing'] * 3 // 4:,} words)" if d["missing"] else (
                 f"ok (~{d['short_of_recommended'] * 3 // 4:,} more words would give the 8K/16K/32K streams distinct text)"
                 if d.get("short_of_recommended") else "ok")

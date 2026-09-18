@@ -78,3 +78,30 @@ def test_holdout_build_says_what_is_missing(tmp_path):
     with _pytest.raises(NotEnoughText) as e:
         build_private_corpus(private, tok_path)
     assert "math needs 96 more tokens" in str(e.value) and "long needs" in str(e.value)
+
+
+def test_holdout_rejects_padded_repeats(tmp_path):
+    import json
+
+    import pytest as _pytest
+    from tokenizers import Tokenizer, models, pre_tokenizers
+
+    from bittrellis.holdout import NotEnoughText, build_private_corpus, inventory
+
+    tok = Tokenizer(models.WordLevel(vocab={"[UNK]": 0, "a": 1, "b": 2}, unk_token="[UNK]"))
+    tok.pre_tokenizer = pre_tokenizers.Whitespace()
+    tok_path = tmp_path / "tokenizer.json"
+    tok_path.write_text(tok.to_str())
+    private = tmp_path / "holdout"
+    for cat in ("general", "math", "code", "tools", "multilingual", "long"):
+        (private / "docs" / cat).mkdir(parents=True)
+        # every line distinct, enough tokens
+        (private / "docs" / cat / "a.txt").write_text("\n".join(f"a b {i}" * 40 for i in range(700)))
+    # one category padded by copying its own lines
+    padded = (private / "docs/math/a.txt").read_text()
+    (private / "docs/math/a.txt").write_text(padded + padded)
+    (private / "epoch.json").write_text(json.dumps({"epoch": "t", "seed": "s"}))
+    assert 0.49 < inventory(private, tok_path)["math"]["repeated_lines"] <= 0.5
+    with _pytest.raises(NotEnoughText) as e:
+        build_private_corpus(private, tok_path)
+    assert "repeated" in str(e.value) and "math" in str(e.value)
