@@ -79,14 +79,17 @@ def render_readme(frontier: dict, epoch: str) -> str:
              "> Every evaluated pull request, the frontier it was ranked against, and the artifacts behind both.",
              "", "Written by the evaluator after each pass. Re-derive any score yourself:", "",
              "```bash", f"bittrellis frontier {epoch}/accepted <your artifact>", "```", "",
-             "| | Checkpoint | RP-KL ↓ | tasks ↑ | decode tok/s ↑ | prefill 4K tok/s ↑ | peak GPU GiB ↓ | FG-2 |",
-             "|---|---|---:|---:|---:|---:|---:|---:|"]
+             "| | Checkpoint | RP-KL ↓ | tasks ↑ | decode tok/s ↑ | prefill 4K tok/s ↑ | peak GPU GiB ↓ | holdout | FG-2 |",
+             "|---|---|---:|---:|---:|---:|---:|---|---:|"]
     for r in rows:
         mark = "★" if r.get("frontier") else " "
         tasks = f"{r['tasks_passed']}/{r['tasks_n']}" if r.get("tasks_n") else "—"
         gain = f"{100 * (r['frontier_gain'] or 0):.3f}%" if r.get("frontier_gain") is not None else "—"
+        gates = "; ".join(r.get("gate_failures") or [])
         lines.append(f"| {mark} | {r['name']} | {r['rp_kl']:.4f} | {tasks} | {r['decode_tps']:.1f} | "
-                     f"{r['prefill_tps']:,.0f} | {r['peak_gpu_gib']:.2f} | {gain} |")
+                     f"{r['prefill_tps']:,.0f} | {r['peak_gpu_gib']:.2f} | {r.get('holdout') or '—'} | {gain} |")
+        if gates:
+            lines.append(f"| | ↳ *not credited: {gates}* | | | | | | | |")
     lines += ["", f"Epoch `{epoch}` · rules: [bittrellis](https://github.com/coderbench/bittrellis) "
               "([specification](https://github.com/coderbench/bittrellis/blob/main/docs/specification.md)).",
               "", "`results/` holds one write-once record per evaluated pull-request head, `observations/` the "
