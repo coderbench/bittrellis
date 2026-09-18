@@ -1,6 +1,8 @@
 import hashlib
 import os
 
+import pytest
+
 from bittrellis.lineage import verify_source
 
 
@@ -38,6 +40,7 @@ def test_verify_source_reports_missing_and_size(tmp_path):
 
 def test_holdout_inventory_reports_what_is_missing(tmp_path):
 
+    pytest.importorskip("tokenizers")  # holdout tooling needs it; the dev extra does not install it
     from tokenizers import Tokenizer, models, pre_tokenizers
 
     from bittrellis.holdout import inventory
@@ -61,7 +64,7 @@ def test_holdout_inventory_reports_what_is_missing(tmp_path):
 def test_holdout_build_says_what_is_missing(tmp_path):
     import json
 
-    import pytest as _pytest
+    pytest.importorskip("tokenizers")  # holdout tooling needs it; the dev extra does not install it
     from tokenizers import Tokenizer, models, pre_tokenizers
 
     from bittrellis.holdout import NotEnoughText, build_private_corpus
@@ -75,7 +78,7 @@ def test_holdout_build_says_what_is_missing(tmp_path):
         (private / "docs" / cat).mkdir(parents=True)
         (private / "docs" / cat / "a.txt").write_text("hello world " * 2000)   # 4,000 tokens: just short
     (private / "epoch.json").write_text(json.dumps({"epoch": "t", "seed": "s"}))
-    with _pytest.raises(NotEnoughText) as e:
+    with pytest.raises(NotEnoughText) as e:
         build_private_corpus(private, tok_path)
     assert "math needs 96 more tokens" in str(e.value) and "long needs" in str(e.value)
 
@@ -83,7 +86,7 @@ def test_holdout_build_says_what_is_missing(tmp_path):
 def test_holdout_rejects_padded_repeats(tmp_path):
     import json
 
-    import pytest as _pytest
+    pytest.importorskip("tokenizers")  # holdout tooling needs it; the dev extra does not install it
     from tokenizers import Tokenizer, models, pre_tokenizers
 
     from bittrellis.holdout import NotEnoughText, build_private_corpus, inventory
@@ -102,6 +105,6 @@ def test_holdout_rejects_padded_repeats(tmp_path):
     (private / "docs/math/a.txt").write_text(padded + padded)
     (private / "epoch.json").write_text(json.dumps({"epoch": "t", "seed": "s"}))
     assert 0.45 < inventory(private, tok_path)["math"]["repeated_spans"] <= 0.5
-    with _pytest.raises(NotEnoughText) as e:
+    with pytest.raises(NotEnoughText) as e:
         build_private_corpus(private, tok_path)
     assert "repeated" in str(e.value) and "math" in str(e.value)
