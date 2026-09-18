@@ -32,6 +32,10 @@ from .runtime import SparkInfer
 from .track import Track
 
 
+class NotEnoughText(ValueError):
+    """The holdout directory does not hold enough text yet; the message lists what is missing."""
+
+
 def build_private_corpus(private_dir: Path, tokenizer_json: Path) -> dict:
     from tokenizers import Tokenizer
 
@@ -48,6 +52,12 @@ def build_private_corpus(private_dir: Path, tokenizer_json: Path) -> dict:
         return [f.read_text() for f in ordered]
 
     short = {cat: docs(cat) for cat in SHORT_CATEGORIES}
+    inv = inventory(private_dir, tokenizer_json)
+    inv.pop("epoch", None)
+    missing = {cat: d["missing"] for cat, d in inv.items() if d["missing"]}
+    if missing:
+        raise NotEnoughText("not enough text yet: " + ", ".join(
+            f"{cat} needs {n:,} more tokens (~{n * 3 // 4:,} words)" for cat, n in sorted(missing.items())))
     streams = assemble_streams(tok, short, docs("long"), meta["seed"])
     body = {"version": meta["epoch"], "split": "private-holdout",
             "tokenizer": {"sha256": hashlib.sha256(tok_bytes).hexdigest()}, "streams": streams}
@@ -64,12 +74,15 @@ def inventory(private_dir: Path, tokenizer_json: Path) -> dict:
 
     tok = Tokenizer.from_str(Path(tokenizer_json).read_text())
     need = {cat: SHORT_TOKENS for cat in SHORT_CATEGORIES}
-    need["long"] = max(LONG_LENGTHS) * 2  # the 8K/16K/32K streams rotate through the long documents
+    need["long"] = max(LONG_LENGTHS)  # every needle stream is filled from these documents
     out = {}
     for cat, want in need.items():
         files = sorted((Path(private_dir) / "docs" / cat).glob("*.txt"))
         have = sum(len(tok.encode(f.read_text()).ids) for f in files)
-        out[cat] = {"files": len(files), "tokens": have, "needs": want, "missing": max(0, want - have)}
+        # Two or more long documents keep the 8K/16K/32K streams from being prefixes of each other.
+        want_more = max(LONG_LENGTHS) * 2 if cat == "long" else want
+        out[cat] = {"files": len(files), "tokens": have, "needs": want, "missing": max(0, want - have),
+                    "recommended": want_more, "short_of_recommended": max(0, want_more - have)}
     out["epoch"] = json.loads((Path(private_dir) / "epoch.json").read_text()) if (Path(private_dir) / "epoch.json").exists() else None
     return out
 

@@ -358,13 +358,19 @@ def cmd_holdout(args) -> int:
         print(f"epoch {epoch['epoch'] if epoch else 'MISSING epoch.json'}")
         print(f"  {'category':14s} {'files':>5s} {'tokens':>8s} {'needs':>8s}  status")
         for cat, d in inv.items():
-            state = "ok" if not d["missing"] else f"needs {d['missing']:,} more tokens (~{d['missing'] * 3 // 4:,} words)"
+            state = f"needs {d['missing']:,} more tokens (~{d['missing'] * 3 // 4:,} words)" if d["missing"] else (
+                f"ok (~{d['short_of_recommended'] * 3 // 4:,} more words would give the 8K/16K/32K streams distinct text)"
+                if d.get("short_of_recommended") else "ok")
             print(f"  {cat:14s} {d['files']:5d} {d['tokens']:8,d} {d['needs']:8,d}  {state}")
         missing = sum(d["missing"] for d in inv.values())
         print("ready to build" if not missing and epoch else "not ready: add the text above, and epoch.json with a secret seed")
         return 0 if not missing and epoch else 1
     if args.action == "build":
-        c = holdout.build_private_corpus(Path(args.private), Path(args.shipped) / "tokenizer.json")
+        try:
+            c = holdout.build_private_corpus(Path(args.private), Path(args.shipped) / "tokenizer.json")
+        except holdout.NotEnoughText as e:
+            print(f"{e}\n  run: bittrellis holdout inventory --private {args.private}")
+            return 1
         print(f"private holdout {c['version']}: {len(c['streams'])} streams, sha256 {c['sha256'][:16]}")
         return 0
     verdict = holdout.check(SparkInfer(args.sparkinfer, track), track, Path(args.checkpoint), Path(args.artifact),
