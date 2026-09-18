@@ -55,7 +55,7 @@
       "valid": true,
       "gate_failures": [],
       "frontier": true,
-      "frontier_gain": 0.0019336075720904622,
+      "frontier_gain": 0.022509831281829276,
       "dominated_by": []
     },
     {
@@ -74,11 +74,11 @@
       "checkpoint_gib": 50.95601684600115,
       "tasks_passed": 575,
       "tasks_n": 784,
-      "holdout": null,
+      "holdout": "PASS",
       "valid": true,
       "gate_failures": [],
       "frontier": true,
-      "frontier_gain": 0.0003972891518187749,
+      "frontier_gain": 0.0008696609990505033,
       "dominated_by": []
     },
     {
@@ -97,11 +97,13 @@
       "checkpoint_gib": 16.685693942010403,
       "tasks_passed": 566,
       "tasks_n": 784,
-      "holdout": null,
-      "valid": true,
-      "gate_failures": [],
-      "frontier": true,
-      "frontier_gain": 0.0030355574521092332,
+      "holdout": "FAIL",
+      "valid": false,
+      "gate_failures": [
+        "private holdout FAIL"
+      ],
+      "frontier": false,
+      "frontier_gain": 0.0,
       "dominated_by": []
     },
     {
@@ -120,14 +122,14 @@
       "checkpoint_gib": 18.943435736000538,
       "tasks_passed": 573,
       "tasks_n": 784,
-      "holdout": null,
-      "valid": true,
-      "gate_failures": [],
+      "holdout": "FAIL",
+      "valid": false,
+      "gate_failures": [
+        "private holdout FAIL"
+      ],
       "frontier": false,
       "frontier_gain": 0.0,
-      "dominated_by": [
-        "V13-mlp-unsloth-bytes"
-      ]
+      "dominated_by": []
     },
     {
       "id": "8ee4f9b18f007a8e",
@@ -145,11 +147,11 @@
       "checkpoint_gib": 24.097743801772594,
       "tasks_passed": 566,
       "tasks_n": 784,
-      "holdout": null,
+      "holdout": "PASS",
       "valid": true,
       "gate_failures": [],
       "frontier": true,
-      "frontier_gain": 0.0010034349323919667,
+      "frontier_gain": 0.0010034349323919944,
       "dominated_by": []
     },
     {
@@ -193,11 +195,11 @@
       "checkpoint_gib": 39.59577666223049,
       "tasks_passed": 563,
       "tasks_n": 784,
-      "holdout": null,
+      "holdout": "PASS",
       "valid": true,
       "gate_failures": [],
       "frontier": true,
-      "frontier_gain": 0.00023805116700739704,
+      "frontier_gain": 0.0002380511670074248,
       "dominated_by": []
     },
     {
@@ -304,7 +306,6 @@
   "frontier": [
     "V0-baseline-rebuild",
     "V1-all-q4k",
-    "V13-mlp-unsloth-bytes",
     "V4-gdn-q4k",
     "V6-mlp-q4k"
   ]

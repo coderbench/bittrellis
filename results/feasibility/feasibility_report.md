@@ -12,10 +12,12 @@ measurement ([what changed](#what-changed-from-e1)). Terms: [README](../../READM
 
 - **Nothing beats today's checkpoint (V0) on every axis at once, and V0 beats none of them.** All
   eight mixed seeds are valid and trade something. The search space is open.
-- **Best trade-off: V13.** V0's precision map with calibrated NVFP4 bytes for 56 MLP layers. It is
-  **11.5% closer to the original model** (paired 95% CI excludes 0) at the same decode speed (−0.5%)
-  and peak memory, but **reads 4K prompts 4.4% slower**. Under the pre-registered rule, that prefill
-  cost makes it PASS, not STRONG PASS.
+- **The two fidelity winners fail the private holdout** ([below](#private-holdout-epoch-hpc01-e3)).
+  V13 (calibrated NVFP4 bytes for 56 MLP layers) is 11.5% closer to the original on the public
+  corpus but carries only 9% of that gain to unseen text; V3 carries 44%. Both need 50%. Neither
+  can be credited.
+- **What survives is memory.** V1 (everything Q4_K) saves 1.8 GiB at quality within noise and passes
+  the holdout, as do V6 and V4. The price is prompt reading, up to −49%.
 - **Maps matter on real hardware.** Same model, different maps: prefill up to −49%, peak memory
   −1.8 to +1.9 GiB, decode up to −13%.
 - **Different layers protect different abilities.**
@@ -99,7 +101,7 @@ A Gittensor review found three scoring flaws. The fixes changed the rules, so th
 |---|---|
 | **FG-2 counts only gains beyond noise** (each result handicapped by the ε floors, and it must beat every other result beyond noise somewhere) | gains fall to V13 0.30%, V0 0.19%, V4 0.10%, V1 0.04%, V6 0.02%; a copy of V0 that differs by 0.01 tok/s now scores 0 instead of earning a tier |
 | **Task guard: all 784 questions, compared with V0 question by question** (exact McNemar; no suite may keep under half of V0's passes) | **V5 now fails the guard** (lost 33, gained 19, p = 0.035) and leaves the frontier; every other seed passes |
-| **A paid tier needs a private holdout PASS** | results measured without one are `bt:provisional` and earn nothing |
+| **A paid tier needs a private holdout PASS** | measured on real private text below: **V13 and V3 fail**; V1, V4 and V6 pass |
 
 Task scores on the full set (V0 570/784): V1 575, V3 573, V13 566, V4 566, V6 563, V9 562, V7 561,
 V5 556. The old guard used 196 questions, with suites as small as five, and allowed six lost answers
@@ -108,6 +110,32 @@ per suite.
 **Fidelity is not accuracy.** V13's headline is 11.5% less drift from the original model. On tasks it
 scores 566 against V0's 570, a 4-question difference that the paired guard does not call a
 regression. Neither number shows V13 is *better* at tasks.
+
+## Private holdout (epoch hpc01-e3)
+
+The holdout is 65,015 words of text that has never been published, in the same six categories as the
+public corpus, held by the evaluator ([holdout.md](../../docs/holdout.md)). A candidate passes when a
+significant public gain carries over at **≥ 50%**.
+
+| Seed | Public gain (nats) | Holdout gain | Carried over | Verdict |
+|---|---:|---:|---:|---|
+| V1 everything Q4_K | +0.0116 | +0.0084 | 73% | **PASS** |
+| V6 MLP Q4_K | +0.0011 | +0.0034 | 305% | **PASS** |
+| V4 recurrent Q4_K | −0.0066 | +0.0044 | no public gain to carry | **PASS** |
+| V3 recurrent FP8 | +0.0230 | +0.0100 | 44% | **FAIL** |
+| V13 calibrated MLP bytes | +0.0156 | +0.0014 | **9%** | **FAIL** |
+
+- **Calibrated bytes transfer worst.** V13's advantage comes from an encoder calibrated on a corpus
+  nobody here can inspect; on text it has never seen, almost none of the advantage remains. This is
+  the failure mode the holdout exists to catch.
+- **Format changes transfer well.** The Q4_K maps keep their (small) gains, and V4 improves on the
+  holdout while being slightly worse publicly.
+- **The frontier after the holdout:** V0 (FG-2 2.25%), V4 (0.10%), V1 (0.09%), V6 (0.02%). No result
+  now improves fidelity in a way that survives; the credited gains are memory.
+- **Caveat on the rule.** The holdout text is easier for the model than the public corpus (V0 drifts
+  0.049 there against 0.136), which shrinks absolute gains. Measured as a share of each corpus's own
+  drift, V13 carries 2.9%/11.5% = 25% — still under the bar. A relative transfer rule is the better
+  definition, and it is proposed for the next epoch rather than applied retroactively here.
 
 ## Decision questions
 

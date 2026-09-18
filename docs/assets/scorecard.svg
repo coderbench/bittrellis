@@ -32,7 +32,6 @@
 <rect x="1045.2" y="144" width="19.8" height="12" rx="2" fill="#cf222e"/>
 <line class="gpu" x1="1065.0" y1="140" x2="1065.0" y2="160" stroke-width="1"/>
 <text x="1135.0" y="155.0" fill="#cf222e" font-size="12" font-weight="600" text-anchor="start">+1.9 GB</text>
-<text x="40.0" y="191.0" class="t" font-size="14" font-weight="600" text-anchor="start">★</text>
 <text x="60.0" y="191.0" class="t" font-size="14" font-weight="600" text-anchor="start">V13</text>
 <text x="106.0" y="191.0" class="m" font-size="13" font-weight="400" text-anchor="start">calibrated MLP encoder</text>
 <rect class="track" x="373.0" y="180" width="124" height="12" rx="2"/>

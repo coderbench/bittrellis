@@ -2,8 +2,9 @@
 
 > Add an encoder: one searchable Linear in, the tensors a checkpoint stores out.
 
-Why: calibrated NVFP4 bytes alone cut RP-KL 11.5% at equal decode speed and memory (4.4%
-slower prefill).
+Why: an encoder can move fidelity as much as the format map. Calibrated NVFP4 bytes cut public
+RP-KL 11.5% at equal decode and memory — but carried only 9% of that to the private holdout and so
+earned nothing ([report](../results/feasibility/feasibility_report.md)). A gain has to survive unseen text.
 
 ## The contract
 

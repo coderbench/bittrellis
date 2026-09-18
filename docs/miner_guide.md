@@ -24,10 +24,12 @@ bittrellis inventory --out module_inventory.json
 The frontier holds V0 (the shipped checkpoint) and every seed. Read
 [`results/feasibility/`](../results/feasibility/feasibility_report.md) first:
 
-- **Quantizer quality is a big lever:** V13's calibrated NVFP4 MLP bytes cut RP-KL 11.5% at equal
-  decode and memory, costing 4.4% prefill (layout or values? open).
-- **GDN FP8 buys fidelity for decode:** long-context drift −62% at 13% decode cost.
-- **MLP bytes guard math; the recurrent path, long context.** Tool calling is worst for every checkpoint.
+- **A public fidelity gain is not enough.** Calibrated MLP bytes (V13) cut public RP-KL 11.5% but
+  carried 9% of it to the private holdout, so they earn nothing; GDN FP8 (V3) carried 44%. Both fail.
+- **What passes today is memory.** Q4_K maps keep quality within noise, save 0.4–1.8 GiB and clear
+  the holdout — at up to 49% slower prompt reading.
+- **MLP bytes guard math, the recurrent path guards long context** (public corpus). Tool calling is
+  the worst category for every checkpoint.
 - **The first layer of each kind picks the batched-prefill path:** changing layer 0 can cost 20–50% prefill.
 - **Q4_K saves memory, costs prefill.** **Effects interact:** test combinations.
 

@@ -45,7 +45,7 @@ using a **better compression algorithm** in the same format. So the real questio
 It tries recipes, builds each one into a real checkpoint, and measures it on the real GPU. Each
 column below is one layer; the color is how that part is compressed.
 
-<p align="center"><img src="docs/assets/recipes.svg" alt="Three recipes drawn layer by layer. V0, today's checkpoint, uses the standard NVFP4 encoder everywhere. V13 uses a calibrated encoder for MLP layers 0 to 55 and is 11% closer to the original with 4% slower prompt reading. V3 uses FP8 on every recurrent block and is 17% closer to the original with 13% slower generation." width="100%"/></p>
+<p align="center"><img src="docs/assets/recipes.svg" alt="Three recipes drawn layer by layer. V0, today's checkpoint, uses the standard NVFP4 encoder everywhere. V13 uses a calibrated encoder for MLP layers 0 to 55. V3 uses FP8 on every recurrent block." width="100%"/></p>
 
 Every candidate answers four questions, and only the best trade-offs survive:
 
@@ -69,44 +69,45 @@ mainly a speed project** — it is about keeping quality while fitting the hardw
 ---
 
 <!-- STATUS -->
-## What the first measurements found
+## What the measurements found
 
-> **Verdict: PASS.** Recipes really do trade quality, speed and memory differently on the RTX 5090,
-> and no recipe wins everything. That is exactly what makes a search worth running.
+> **The private holdout changed the answer.** The recipe that looked best on the public corpus does
+> not hold up on text nobody has seen, so it earns nothing. What survives is memory savings.
 > Full numbers: [feasibility report](results/feasibility/feasibility_report.md).
 
-<p align="center"><img src="docs/assets/scorecard.svg" alt="Scorecard of every measured recipe against today's checkpoint on closeness to the original, generation speed, prompt reading speed and GPU memory. V13 is 11% closer with 4% slower prompt reading and no other change. V3 is 17% closer but 13% slower at generation. Q4_K recipes save up to 1.8 GB but read prompts up to 49% slower." width="100%"/></p>
+<p align="center"><img src="docs/assets/scorecard.svg" alt="Scorecard of every measured recipe against today's checkpoint on closeness to the original, generation speed, prompt reading speed and GPU memory." width="100%"/></p>
 
-- **Best balance so far: V13.** Today's recipe with a better MLP encoder: **11.5% closer to the
-  original** at the same generation speed and memory, but prompts read **4.4% slower**.
-- **Different parts guard different skills.** The better MLP encoder halves math drift. 8-bit
-  recurrent layers cut long-document drift by 62%, but generate 13% slower.
-- **Changes don't simply add up.** Combinations behave differently from single changes, so they
-  have to be measured.
-- **Plenty of headroom.** Outside reference checkpoints stay 35–53% closer to the original, at a
-  large speed cost. Getting that quality at SparkInfer speed is the open problem.
+- **A public gain is not a real gain.** V13 (a calibrated MLP encoder) is 11.5% closer to the
+  original on the public corpus, but only 2.9% closer on the private holdout: **9% of the gain
+  carries over**, against the 50% the rule requires. It fails. V3 (8-bit recurrent layers) carries
+  44% over and also fails.
+- **What does survive: memory.** Q4_K maps keep quality within noise and save real memory — V1
+  −1.8 GiB, V6 −1.2 GiB — and they pass the holdout. The price is prompt reading, up to −49%.
+- **Fidelity is not task accuracy.** On all 784 task questions the spread is small: V1 575, V0 570,
+  V13 566. Drift measures how closely a model copies the original, not whether it is smarter.
+- **Plenty of headroom.** Outside references are 35–53% closer to the original on the public corpus,
+  at a large speed cost. Whether that carries over to unseen text is untested.
 <!-- /STATUS -->
 
 <!-- FRONTIER -->
 ### The frontier today
 
-The **frontier** is the set of checkpoints nothing else beats on every measure at once. New results
-earn only by pushing it forward.
+The **frontier** is the set of checkpoints nothing else beats on every measure at once, *after* every
+gate. New results earn only by pushing it forward.
 
-| | Checkpoint | Drift ↓ | Tasks passed ↑ | Generation tok/s ↑ | 4K prompt tok/s ↑ | Peak GPU GiB ↓ |
-|---|---|---:|---:|---:|---:|---:|
-| ★ | **V13** calibrated MLP encoder | **0.120** (−11.5%) | 566/784 | 94.4 | 14,110 | 22.0 |
-| ★ | V1 everything Q4_K | 0.124 | **575/784** | 94.8 | 7,537 | **20.3** |
-| ★ | V6 MLP Q4_K | 0.135 | 563/784 | 94.4 | 8,358 | 20.8 |
-| ★ | **V0** today's shipped checkpoint | 0.136 | 570/784 | **94.9** | **14,760** | 22.0 |
-| ★ | V4 recurrent path Q4_K | 0.142 | 566/784 | 94.9 | 12,011 | 21.6 |
-| | V3 recurrent path FP8 | 0.113 | 573/784 | 83.0 | 11,848 | 23.9 |
-| | V5 attention Q4_K | 0.136 | 556/784 | 94.6 | 13,571 | 21.9 |
+| | Checkpoint | Drift ↓ | Tasks ↑ | Generation tok/s ↑ | 4K prompt tok/s ↑ | Peak GPU GiB ↓ | Holdout |
+|---|---|---:|---:|---:|---:|---:|---|
+| ★ | V1 everything Q4_K | 0.124 | **575/784** | 94.8 | 7,537 | **20.3** | PASS |
+| ★ | V6 MLP Q4_K | 0.135 | 563/784 | 94.4 | 8,358 | 20.8 | PASS |
+| ★ | **V0** today's shipped checkpoint | 0.136 | 570/784 | **94.9** | **14,760** | 22.0 | incumbent |
+| ★ | V4 recurrent path Q4_K | 0.142 | 566/784 | 94.9 | 12,011 | 21.6 | PASS |
+| ✗ | V3 recurrent path FP8 | 0.113 | 573/784 | 83.0 | 11,848 | 23.9 | **FAIL** (44% transfers) |
+| ✗ | V13 calibrated MLP encoder | 0.120 | 566/784 | 94.4 | 14,110 | 22.0 | **FAIL** (9% transfers) |
+| ✗ | V5 attention Q4_K | 0.136 | 556/784 | 94.6 | 13,571 | 21.9 | task guard: −33 answers |
 
-Drift is Reference-Partition KL against the BF16 original: how far the model's next-token predictions
-move, not task accuracy. Δ is paired against V0 with a 95% interval that excludes zero. V3, V7 and V9
-are beaten by a frontier point. V5 fails the task guard (it loses 33 of V0's answers and gains 19), so
-it cannot be credited.
+Drift is Reference-Partition KL against the BF16 original: how far next-token predictions move, not
+task accuracy. ✗ rows are measured but cannot be credited. V7 and V9 are valid but beaten by a
+frontier point.
 
 **Comparison targets.** Just as llama.cpp is SparkInfer's yardstick, BitTrellis measures outside
 checkpoints on the same GPU, corpus and metric. They show what is possible but are never ranked:
@@ -121,8 +122,7 @@ llama.cpp is a different engine. The unsloth checkpoint is not a legal manifest 
 bytes are silently refit to Q4_K at load). R3 cannot load at all: its FP8 scales are per tensor, and
 the pinned loader accepts only per-row scales.
 
-**The miner's target:** move the frontier toward the references' quality without giving up
-SparkInfer's speed.
+**The miner's target:** a fidelity gain that survives the private holdout. Nothing has managed one yet.
 <!-- /FRONTIER -->
 
 ---
@@ -148,7 +148,7 @@ You don't rewrite the inference engine. You submit a better model for it — and
 | ![eval:XS](https://img.shields.io/badge/eval%3AXS-c6efce?style=flat-square) | ≥ 0.005% | ×0.5 |
 | ![eval:none](https://img.shields.io/badge/eval%3Anone-bfc5cc?style=flat-square) ![eval:REJECT](https://img.shields.io/badge/eval%3AREJECT-b60205?style=flat-square) | nothing new, or failed | ×0 |
 
-For scale: today's best move, V13, would be `eval:L`. A tier also needs a private holdout PASS. Duplicates earn nothing, and a near-copy of
+For scale: on today's frontier V0 scores `eval:XL`, V4 and V1 `eval:S`, V6 `eval:XS`. A tier also needs a private holdout PASS: V13 and V3 have none, so they earn nothing. Duplicates earn nothing, and a near-copy of
 an earlier PR earns only what it adds.
 
 **Start here:** [Miner guide](docs/miner_guide.md) · [Rewards](docs/rewards.md) · [Guards](docs/guards.md)

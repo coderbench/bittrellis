@@ -163,7 +163,7 @@ def recipes(path: Path, entries: list[tuple[str, str, str, list[tuple[str, str]]
     """entries: (manifest name, title, description, [(result text, color)])."""
     arch = Qwen38Arch()
     attention = {u.layer for u in arch.units() if u.kind == "attn"}
-    w, left, cw, cg, rh, block = 1200, 330, 11, 2, 18, 124
+    w, left, cw, cg, rh, block = 1200, 330, 11, 2, 18, 142
     h = 104 + block * len(entries) + 30
     b = [text(40, 42, "Same model, different recipes", size=20, weight=700),
          text(40, 66, "One column is one of the 64 layers. Top row: the layer's attention or recurrent block. Bottom row: its MLP.", "m", 13)]
@@ -316,11 +316,13 @@ def main() -> None:
 
     def result(name: str) -> list[tuple[str, str]]:
         r = rows[name]
-        out = [(f"{-(r['rp_kl'] / inc['rp_kl'] - 1) * 100:.0f}% closer to the original", BETTER)]
+        out = [(f"{-(r['rp_kl'] / inc['rp_kl'] - 1) * 100:.0f}% closer on the public corpus", BETTER)]
         for key, what, floor in (("decode_tps", "generation", floors["decode_tps"]), ("prefill_tps", "prompt reading", floors["prefill_tps"])):
             rel = r[key] / inc[key] - 1
             if rel < -floor:
                 out.append((f"{-rel * 100:.0f}% slower {what}", WORSE))
+        if r.get("holdout") == "FAIL":   # a public gain that does not carry over earns nothing
+            out.append(("fails the private holdout: earns nothing", WORSE))
         return out
 
     recipes(OUT / "recipes.svg", [
