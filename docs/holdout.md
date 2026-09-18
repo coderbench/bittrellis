@@ -7,6 +7,8 @@
 - **PASS/FAIL only:** the artifact gets `{"epoch": ..., "result": "PASS"}`; scores, positions, failing items stay private.
 - **Rotation:** a new epoch (new text, seed) replaces the old on a declared schedule; retired text may be published for audits and disputes.
 
+Provisioning a box and restoring this directory: [evaluator_runbook.md](evaluator_runbook.md).
+
 ## Set up and check
 
 ```text

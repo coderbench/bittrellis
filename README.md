@@ -298,6 +298,7 @@ time (`today: Qwen3.8-27B × SparkInfer × RTX 5090`; each next model or GPU is 
 | know how you are scored | [Evaluation](docs/evaluation.md) · [Frontier](docs/frontier.md) · [Rewards](docs/rewards.md) |
 | know what is rejected | [Guards](docs/guards.md) · [Audit](docs/audit.md) · [Holdout](docs/holdout.md) · [Security](SECURITY.md) |
 | check the published scores | [Score records](https://github.com/coderbench/bittrellis-ledger) · [Rewards](docs/rewards.md#the-public-record) |
+| run the evaluator on a GPU | [Evaluator runbook](docs/evaluator_runbook.md) · [Holdout](docs/holdout.md) |
 | read the rules and evidence | [Specification](docs/specification.md) · [Architecture](docs/architecture.md) · [Feasibility report](results/feasibility/feasibility_report.md) |
 
 MIT license · [Contributing](CONTRIBUTING.md)
