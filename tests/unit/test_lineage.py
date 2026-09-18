@@ -96,12 +96,12 @@ def test_holdout_rejects_padded_repeats(tmp_path):
     for cat in ("general", "math", "code", "tools", "multilingual", "long"):
         (private / "docs" / cat).mkdir(parents=True)
         # every line distinct, enough tokens
-        (private / "docs" / cat / "a.txt").write_text("\n".join(f"a b {i}" * 40 for i in range(700)))
+        (private / "docs" / cat / "a.txt").write_text("\n".join(f"a b {i} " * 40 for i in range(700)))
     # one category padded by copying its own lines
     padded = (private / "docs/math/a.txt").read_text()
     (private / "docs/math/a.txt").write_text(padded + padded)
     (private / "epoch.json").write_text(json.dumps({"epoch": "t", "seed": "s"}))
-    assert 0.49 < inventory(private, tok_path)["math"]["repeated_lines"] <= 0.5
+    assert 0.45 < inventory(private, tok_path)["math"]["repeated_spans"] <= 0.5
     with _pytest.raises(NotEnoughText) as e:
         build_private_corpus(private, tok_path)
     assert "repeated" in str(e.value) and "math" in str(e.value)

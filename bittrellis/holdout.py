@@ -31,7 +31,10 @@ from .eval.corpus import SHORT_CATEGORIES, assemble_streams, corpus_hash
 from .runtime import SparkInfer
 from .track import Track
 
-MAX_REPEATED_LINES = 0.2   # above this share of duplicate lines a category is padding, not evidence
+# Padding shows up as repeated long passages. Short repeats are normal (code idioms, "Answer:",
+# log templates), so duplication is measured over 200-word spans, where natural text almost never repeats.
+SHINGLE_WORDS = 200
+MAX_REPEATED_SPANS = 0.25
 
 
 class NotEnoughText(ValueError):
@@ -60,16 +63,26 @@ def build_private_corpus(private_dir: Path, tokenizer_json: Path) -> dict:
     if missing:
         raise NotEnoughText("not enough text yet: " + ", ".join(
             f"{cat} needs {n:,} more tokens (~{n * 3 // 4:,} words)" for cat, n in sorted(missing.items())))
-    repeated = {cat: d["repeated_lines"] for cat, d in inv.items() if d["repeated_lines"] > MAX_REPEATED_LINES}
+    repeated = {cat: d["repeated_spans"] for cat, d in inv.items() if d["repeated_spans"] > MAX_REPEATED_SPANS}
     if repeated:
-        raise NotEnoughText("too much repeated text (a second copy of a passage is not new evidence): " + ", ".join(
-            f"{cat} {share:.0%} repeated lines" for cat, share in sorted(repeated.items())))
+        raise NotEnoughText(f"too much repeated text (a second copy of a passage is not new evidence), "
+                            f"measured over {SHINGLE_WORDS}-word spans: " + ", ".join(
+                                f"{cat} {share:.0%}" for cat, share in sorted(repeated.items())))
     streams = assemble_streams(tok, short, docs("long"), meta["seed"])
     body = {"version": meta["epoch"], "split": "private-holdout",
             "tokenizer": {"sha256": hashlib.sha256(tok_bytes).hexdigest()}, "streams": streams}
     body["sha256"] = corpus_hash(body)
     (private_dir / "corpus.json").write_text(json.dumps(body, separators=(",", ":")) + "\n")
     return body
+
+
+def repeated_spans(text: str, n: int = SHINGLE_WORDS) -> float:
+    """Share of `n`-word spans that occur more than once: the signature of padded text."""
+    words = text.split()
+    if len(words) < n:
+        return 0.0
+    spans = [hashlib.blake2b(" ".join(words[i : i + n]).encode(), digest_size=8).digest() for i in range(len(words) - n + 1)]
+    return 1 - len(set(spans)) / len(spans)
 
 
 def inventory(private_dir: Path, tokenizer_json: Path) -> dict:
@@ -86,13 +99,12 @@ def inventory(private_dir: Path, tokenizer_json: Path) -> dict:
         files = sorted((Path(private_dir) / "docs" / cat).glob("*.txt"))
         have = sum(len(tok.encode(f.read_text()).ids) for f in files)
         # Repeated passages make a holdout look easy: predictions on a second copy are not independent.
-        lines = [ln.strip() for f in files for ln in f.read_text().splitlines() if ln.strip()]
-        repeated = 1 - len(set(lines)) / len(lines) if lines else 0.0
+        repeated = repeated_spans("\n".join(f.read_text() for f in files))
         # Two or more long documents keep the 8K/16K/32K streams from being prefixes of each other.
         want_more = max(LONG_LENGTHS) * 2 if cat == "long" else want
         out[cat] = {"files": len(files), "tokens": have, "needs": want, "missing": max(0, want - have),
                     "recommended": want_more, "short_of_recommended": max(0, want_more - have),
-                    "repeated_lines": round(repeated, 3)}
+                    "repeated_spans": round(repeated, 3)}
     out["epoch"] = json.loads((Path(private_dir) / "epoch.json").read_text()) if (Path(private_dir) / "epoch.json").exists() else None
     return out
 
