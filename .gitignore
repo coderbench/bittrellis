@@ -11,3 +11,4 @@ venv/
 /third_party/
 /artifacts/
 /runs/
+.claude/settings.local.json
