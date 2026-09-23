@@ -31,6 +31,6 @@
 <circle cx="1048.0" cy="52" r="18" fill="#8b5cf6"/>
 <text x="1048.0" y="57.0" fill="#ffffff" font-size="15" font-weight="700" text-anchor="middle">5</text>
 <text x="1048.0" y="102.0" class="t" font-size="16" font-weight="600" text-anchor="middle">Merge = paid</text>
-<text x="1048.0" y="126.0" class="m" font-size="13" font-weight="400" text-anchor="middle">a maintainer merges;</text>
+<text x="1048.0" y="126.0" class="m" font-size="13" font-weight="400" text-anchor="middle">the bot merges the top result;</text>
 <text x="1048.0" y="145.0" class="m" font-size="13" font-weight="400" text-anchor="middle">Gittensor pays the tier</text>
 </svg>

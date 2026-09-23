@@ -34,6 +34,10 @@ For each PR, in that order:
 After the queue, RE-RANK evaluated open PRs whose reference set changed (an earlier PR merged or
 closed): labels stay current, and a PR that becomes non-dominated is resumed for tasks and holdout.
 
+6. MERGE the top-ranked open result, with --auto-merge. Merging is the payment event and a merged
+   tier is final, so every condition is re-checked against a fresh read of the PR at merge time, and
+   the merge names the exact evaluated head SHA: GitHub refuses it if the branch moved since.
+
 State lives in <root>/state.json; artifacts in <root>/prs/<number>-<sha>/; accepted artifacts in
 <root>/accepted/ (copied when a PR that the bot evaluated is merged).
 """
@@ -98,7 +102,7 @@ TIER_TEXT = {"XL": "very large frontier gain", "L": "large frontier gain", "M": 
              "none": "evaluated, no new frontier space", "REJECT": "failed a gate, the audit or a screen"}
 REJECTED = {"gate", "audit", "same-encoder", "nondeterministic", "invalid", "build", "memory"}
 EXTRA_LABELS = {
-    "merge-first": ("bt:merge-first", "2da44e", "the highest-scoring open result; maintainers merge this one first"),
+    "merge-first": ("bt:merge-first", "2da44e", "the highest-scoring open result; merged next"),
     "derivative": ("bt:derivative", "fff3b0", "close to an earlier PR by another author; credited only for what it adds"),
     "approved": ("eval-approved", "0e8a16", "maintainer: evaluate this PR's contributed code in the sandbox"),
     "copy-cleared": ("copy-cleared", "0e8a16", "maintainer: measure this PR despite repeated near-copies"),
@@ -177,6 +181,23 @@ class GitHub:
 
     def comment(self, number: int, body: str) -> None:
         self.api("POST", f"/issues/{number}/comments", {"body": body})
+
+    def pull(self, number: int) -> dict:
+        """A fresh read of one PR: mergeability, draft state and labels as they are right now."""
+        return self.api("GET", f"/pulls/{number}")
+
+    def merge(self, number: int, sha: str, method: str, title: str, message: str) -> tuple[bool, str]:
+        """Merge exactly `sha`. GitHub refuses with 409 if the head moved after it was evaluated."""
+        try:
+            r = self.api("PUT", f"/pulls/{number}/merge",
+                         {"sha": sha, "merge_method": method, "commit_title": title, "commit_message": message}) or {}
+            return bool(r.get("merged")), r.get("sha", "")
+        except urllib.error.HTTPError as e:
+            try:
+                reason = json.loads(e.read().decode(errors="replace")).get("message", "")
+            except (json.JSONDecodeError, OSError):
+                reason = ""
+            return False, f"HTTP {e.code} {reason}".strip()
 
 
 def classify(files: list[str]) -> tuple[str, list[str]]:
@@ -282,6 +303,41 @@ def pick_merge_first(candidates: list[dict]) -> dict | None:
     rank = {t: i for i, t in enumerate(TIERS)}
     paid = [c for c in candidates if c.get("tier") in rank]
     return min(paid, key=lambda c: (rank[c["tier"]], -(c.get("gain") or 0), c["first_seen"])) if paid else None
+
+
+# GitHub's mergeable_state. "clean" alone: "unstable" means a check is failing or still running, and
+# "blocked", "behind" and "dirty" mean a review, an update or a conflict is outstanding.
+MERGEABLE_STATES = {"clean"}
+
+
+def merge_blockers(entry: dict, detail: dict) -> list[str]:
+    """Why the top-ranked result must not be merged automatically; empty means merge it.
+
+    Merging pays, and a merged tier is final, so this repeats what the pass already decided against a
+    fresh read of the PR: the measured head is still the head, the result still earns, contributed
+    code still carries its approval, and GitHub itself considers the branch clean.
+    """
+    out = []
+    if entry.get("status") != "frontier":
+        out.append(f"status is {entry.get('status') or 'unevaluated'}, not frontier")
+    if entry.get("tier") not in TIERS:
+        out.append(f"tier {entry.get('tier') or 'none'} is not paid")
+    if entry.get("head") != detail.get("head", {}).get("sha"):
+        out.append("the head moved after it was evaluated")
+    if detail.get("draft"):
+        out.append("the PR is a draft")
+    if detail.get("merged"):
+        out.append("already merged")
+    if entry.get("kind") == "code" and APPROVED not in {lab["name"] for lab in detail.get("labels", [])}:
+        out.append(f"contributed code without {APPROVED}")
+    state = detail.get("mergeable_state")
+    if detail.get("mergeable") is None:
+        out.append("GitHub has not finished computing mergeability")
+    elif not detail["mergeable"]:
+        out.append(f"GitHub says it is not mergeable ({state})")
+    elif state not in MERGEABLE_STATES:
+        out.append(f"mergeable_state is {state}, not clean")
+    return out
 
 
 def score_header(label: str, row: dict | None = None) -> str:
@@ -448,7 +504,7 @@ class Evaluator:
                 traceback.print_exc()
             self.save()
         self.rerank(open_prs)
-        self.mark_merge_first(open_prs)
+        self.auto_merge(self.mark_merge_first(open_prs))
         self.publish_records()
         self.save()
 
@@ -478,8 +534,8 @@ class Evaluator:
     def _accepted_names(self) -> list[str]:
         return sorted(p.name for p in self.accepted.iterdir()) if self.accepted.exists() else []
 
-    def mark_merge_first(self, open_prs: list[dict]) -> None:
-        """One `bt:merge-first` per pass. Maintainers merge it; the rest are re-ranked against it afterwards."""
+    def mark_merge_first(self, open_prs: list[dict]) -> int | None:
+        """One `bt:merge-first` per pass: the result that is merged next, and the number it is on."""
         entries = {pr["number"]: self.state.get(f"{pr['number']}-{pr['head']['sha'][:12]}", {}) for pr in open_prs}
         best = pick_merge_first([{**e, "pr": n} for n, e in entries.items() if e.get("status") == "frontier" and "first_seen" in e])
         name = EXTRA_LABELS["merge-first"][0]
@@ -490,6 +546,7 @@ class Evaluator:
                     self.gh.add_label(pr["number"], name)
             elif has:
                 self.gh.remove_label(pr["number"], name)
+        return best["pr"] if best else None
 
     def sync_merged(self) -> None:
         """Copy artifacts of merged, frontier-moving PRs into accepted/ so later PRs are ranked against them."""
@@ -497,10 +554,43 @@ class Evaluator:
             if not pr.get("merged_at"):
                 continue
             # Merged is final: the tier on a merged PR is what Gittensor pays, so the bot never relabels it.
-            self.state["_merged"][str(pr["number"])] = pr["head"]["sha"]
-            entry = self.state.get(f"{pr['number']}-{pr['head']['sha'][:12]}")
-            if entry and entry.get("status") == "frontier" and not (self.accepted / entry["name"]).exists():
-                shutil.copytree(entry["artifact"], self.accepted / entry["name"])
+            self.accept_merged(pr["number"], pr["head"]["sha"])
+
+    def accept_merged(self, number: int, sha: str) -> None:
+        """Record a merge and make its artifact a ranking reference for every later PR."""
+        self.state["_merged"][str(number)] = sha
+        entry = self.state.get(f"{number}-{sha[:12]}")
+        if entry and entry.get("status") == "frontier" and not (self.accepted / entry["name"]).exists():
+            shutil.copytree(entry["artifact"], self.accepted / entry["name"])
+
+    def auto_merge(self, number: int | None) -> None:
+        """Merge the top-ranked open result. Refusing is always safe: it is merged on a later pass."""
+        if not getattr(self.args, "auto_merge", False) or number is None:
+            return
+        try:
+            detail = self.gh.pull(number)
+        except urllib.error.URLError as e:
+            print(f"[merge] #{number}: cannot read the PR ({e!r})")
+            return
+        sha = detail.get("head", {}).get("sha", "")
+        entry = self.state.get(f"{number}-{sha[:12]}", {})
+        blockers = merge_blockers(entry, detail)
+        if blockers:
+            print(f"[merge] #{number} not merged: {'; '.join(blockers)}")
+            return
+        tier, gain = entry["tier"], 100 * (entry.get("gain") or 0)
+        family = REWARDS["label_family"]
+        merged, why = self.gh.merge(
+            number, sha, self.args.merge_method, f"{detail['title']} (#{number})",
+            f"{family}:{tier} \u00b7 FG-2 +{gain:.3f}% \u00b7 evaluator epoch {self.epoch}\n"
+            f"Merged by the evaluator at {sha}.")
+        if not merged:
+            print(f"[merge] #{number} refused by GitHub: {why}")
+            return
+        self.gh.comment(number, f"Merged automatically as the top-ranked open result: `{family}:{tier}`, "
+                                f"FG-2 +{gain:.3f}%. A merged tier is final and is what Gittensor pays.")
+        self.accept_merged(number, sha)
+        print(f"[merge] #{number} merged as {why}")
 
     def evaluate(self, pr: dict, open_prs: list[dict], resume: bool = False) -> None:
         number, sha, author = pr["number"], pr["head"]["sha"], pr["user"]["login"]
@@ -895,6 +985,9 @@ def main() -> int:
                     help="unprivileged account that runs contributed code (evaluator/setup_sandbox.sh)")
     ap.add_argument("--token-file", default=os.environ.get("BT_TOKEN_FILE"), help="checked to be unreadable by the sandbox")
     ap.add_argument("--no-sandbox", action="store_true", help="run contributed code as the evaluator (never on a host with secrets)")
+    ap.add_argument("--auto-merge", action="store_true",
+                    help="merge the top-ranked open result each pass; needs a token with contents: write")
+    ap.add_argument("--merge-method", default="squash", choices=("squash", "merge", "rebase"))
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--interval", type=int, default=600)
     args = ap.parse_args()

@@ -6,7 +6,7 @@
 ```text
 manifests/<name>.yaml (+ optional quantizer) ──PR──▶ evaluator
     screen (no GPU) → build → audit → RP-KL → 2 perf runs → tasks → private holdout → ε-frontier
-◀── PR comment: score + tier (eval:XL … eval:XS / none / REJECT) ──▶ maintainer merges ──▶ paid
+◀── PR comment: score + tier (eval:XL … eval:XS / none / REJECT) ──▶ bot merges the top result ──▶ paid
 ```
 
 ## 1. Set up (no GPU)
@@ -93,8 +93,8 @@ One manifest per PR in `manifests/`, hypothesis in `description`. Don't touch th
 4. **ε-frontier:** RP-KL ↓ · decode ↑ · 4K prefill ↑ · peak GPU memory ↓, noise-aware, against V0,
    seeds, accepted results and earlier open PRs by other authors. [frontier.md](frontier.md)
 5. **FG-2 → tier:** dominated, invalid or duplicate: 0; else `eval:XL` (≥ 0.50%) … `eval:XS` (≥ 0.005%), counting only gains beyond noise; no holdout PASS, no tier.
-6. **Merge:** the top open result gets `bt:merge-first`; Gittensor pays the tier when a maintainer
-   merges. [rewards.md](rewards.md)
+6. **Merge:** the top open result gets `bt:merge-first` and the evaluator merges it on that pass;
+   Gittensor pays the tier on the merge. [rewards.md](rewards.md)
 
 ## What earns nothing
 

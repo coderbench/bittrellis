@@ -127,7 +127,7 @@ observe PR heads ─▶ SCREEN (no GPU): queue share · validate · duplicate ·
 
 [`evaluator/pr_bot.py`](../evaluator/pr_bot.py) runs it. Manifest-only PRs use trusted `main` code; contributed code (quantizers, search) waits for a maintainer's `eval-approved` label; PRs touching evaluator paths are never auto-evaluated.
 
-**Copies** are judged by expanded recipe and encoder output bytes, not source text. The first-observed head is the original; a later PR ranks against other authors' earlier open PRs on the frontier, earning only what it adds ([guards.md](guards.md)). **Contributed quantizer code** runs only in an unprivileged sandbox account (expand, probe, build, regenerate); trusted `main` code audits and measures its output. **Payment:** each pass the bot marks one `bt:merge-first` result; a maintainer merges, the tier on a merged PR is final, and Gittensor pays that tier. **No private holdout PASS, no paid tier:** such a result is `bt:provisional` ([rewards.md](rewards.md)).
+**Copies** are judged by expanded recipe and encoder output bytes, not source text. The first-observed head is the original; a later PR ranks against other authors' earlier open PRs on the frontier, earning only what it adds ([guards.md](guards.md)). **Contributed quantizer code** runs only in an unprivileged sandbox account (expand, probe, build, regenerate); trusted `main` code audits and measures its output. **Payment:** each pass the bot marks one `bt:merge-first` result and merges it at the head SHA it measured, re-checking every condition first; the tier on a merged PR is final, and Gittensor pays that tier. **No private holdout PASS, no paid tier:** such a result is `bt:provisional` ([rewards.md](rewards.md)).
 
 ## 11. Artifacts
 

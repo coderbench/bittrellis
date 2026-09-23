@@ -120,7 +120,7 @@ REWARD_STEPS = (
     ("Screen", ["no GPU: duplicates,", "copies, memory, encoders"]),
     ("Measure", ["quality, speed and memory", "on the real RTX 5090"]),
     ("Tier label", ["eval:XL … eval:XS from", "the frontier space it adds"]),
-    ("Merge = paid", ["a maintainer merges;", "Gittensor pays the tier"]),
+    ("Merge = paid", ["the bot merges the top result;", "Gittensor pays the tier"]),
 )
 
 

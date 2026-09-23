@@ -172,6 +172,65 @@ def test_frontier_duplicate_near_copy_and_staged_skip(bot):
     assert "eval:none" not in gh.labels[3]
 
 
+class MergingGitHub(FakeGitHub):
+    """FakeGitHub that can also report mergeability and record merges."""
+
+    def __init__(self, prs, mergeable_state="clean"):
+        super().__init__(prs)
+        self.merged, self.mergeable_state = [], mergeable_state
+
+    def pull(self, number):
+        pr = next(p for p in self.prs if p["number"] == number)
+        return {"head": pr["head"], "draft": False, "merged": False, "title": f"candidate #{number}",
+                "labels": [{"name": n} for n in self.labels.get(number, [])],
+                "mergeable": True, "mergeable_state": self.mergeable_state}
+
+    def merge(self, number, sha, method, title, message):
+        self.merged.append((number, sha, method))
+        return True, f"merge-commit-{number}"
+
+
+def _one_frontier_pr(bot):
+    sha = "a" * 40
+    bot.recipes[sha] = (manifest_yaml("alice-calibrated", RECIPE), SEEDS / "V13-mlp-unsloth-bytes",
+                        {"prefill_tps": 16000.0})
+    bot.args.auto_merge, bot.args.merge_method = True, "squash"
+    return sha
+
+
+def test_the_top_result_is_merged_at_the_sha_it_was_measured_at(bot):
+    sha = _one_frontier_pr(bot)
+    gh = MergingGitHub([pr(1, "alice", sha)])
+    ev = pr_bot.Evaluator(gh, bot.args)
+    ev.run_once()
+
+    assert ev.state[f"1-{sha[:12]}"]["status"] == "frontier"
+    assert gh.merged == [(1, sha, "squash")]                      # exactly the evaluated head
+    assert (Path(bot.args.root) / "accepted" / "alice-calibrated").exists()   # ranks later PRs at once
+    assert "Merged automatically" in gh.comments[1][-1]
+
+
+def test_a_failing_check_stops_the_merge_and_it_is_retried_later(bot):
+    sha = _one_frontier_pr(bot)
+    gh = MergingGitHub([pr(1, "alice", sha)], mergeable_state="unstable")
+    ev = pr_bot.Evaluator(gh, bot.args)
+    ev.run_once()
+
+    assert gh.merged == []                                        # CI red: nothing merged
+    assert pr_bot.EXTRA_LABELS["merge-first"][0] in gh.labels[1]  # still first in line
+    gh.mergeable_state = "clean"                                  # the check goes green
+    ev.run_once()
+    assert gh.merged == [(1, sha, "squash")]
+
+
+def test_nothing_is_merged_unless_auto_merge_is_on(bot):
+    sha = _one_frontier_pr(bot)
+    bot.args.auto_merge = False
+    gh = MergingGitHub([pr(1, "alice", sha)])
+    pr_bot.Evaluator(gh, bot.args).run_once()
+    assert gh.merged == []
+
+
 def test_evaluator_root_is_created_private(bot, tmp_path):
     ev = pr_bot.Evaluator(FakeGitHub([]), bot.args)
     ev.save()
