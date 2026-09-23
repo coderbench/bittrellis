@@ -71,3 +71,67 @@ def test_publish_pushes_without_force_and_hides_the_token(tmp_path, monkeypatch)
 def test_publish_refuses_a_remote_with_credentials(tmp_path):
     with pytest.raises(P.PublishError):
         P.publish(tmp_path, "https://user:token@github.com/o/r.git", None, "m")
+
+
+def _bare(path):
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(path)], check=True)
+    return str(path)
+
+
+def test_a_failed_push_is_retried_on_a_pass_that_changes_nothing(tmp_path):
+    """One network failure must not strand the record: the next pass pushes it anyway."""
+    remote = _bare(tmp_path / "remote.git")
+    ledger = tmp_path / "ledger"
+    led = L.Ledger(ledger, "hpc01-e3")
+    led.frontier(FRONTIER)
+
+    with pytest.raises(P.PublishError):                     # the remote is unreachable this pass
+        P.publish(ledger, str(tmp_path / "gone.git"), None, "records: pass 1")
+    assert subprocess.run(["git", "log", "--oneline", "main"], cwd=remote, capture_output=True,
+                          text=True).stdout.strip() == ""   # nothing published yet
+
+    commit = P.publish(ledger, remote, None, "records: pass 2")   # nothing new was written
+    assert commit, "an unpushed commit must go out even when the pass wrote nothing"
+    assert "hpc01-e3/frontier.json" in subprocess.run(
+        ["git", "--no-pager", "log", "-1", "--name-only", "main"], cwd=remote, capture_output=True,
+        text=True).stdout
+    assert P.publish(ledger, remote, None, "records: pass 3") is None   # now it is up to date
+
+
+def test_a_replacement_box_continues_the_published_history(tmp_path):
+    """A fresh box must extend the record, not fork a second one that can never be pushed."""
+    remote = _bare(tmp_path / "remote.git")
+    first = tmp_path / "box1"
+    L.Ledger(first, "hpc01-e3").frontier(FRONTIER)
+    P.publish(first, remote, None, "records: box 1")
+
+    fresh = tmp_path / "box2"                                # the box was returned; nothing local
+    assert P.adopt(fresh, remote, None) is True
+    assert (fresh / "hpc01-e3/frontier.json").exists()        # the record came back
+    L.Ledger(fresh, "hpc01-e3").record({"pr": 4, "head": "b" * 40, "author": "bob", "status": "frontier"}, None)
+    assert P.publish(fresh, remote, None, "records: box 2")   # accepted: same history, fast-forward
+
+    log = subprocess.run(["git", "log", "--oneline", "main"], cwd=remote, capture_output=True, text=True).stdout
+    assert "records: box 1" in log and "records: box 2" in log
+
+
+def test_adopt_keeps_records_already_written_on_this_box(tmp_path):
+    remote = _bare(tmp_path / "remote.git")
+    first = tmp_path / "box1"
+    L.Ledger(first, "hpc01-e3").frontier(FRONTIER)
+    P.publish(first, remote, None, "records: box 1")
+
+    fresh = tmp_path / "box2"                                 # a pass wrote before the history arrived
+    L.Ledger(fresh, "hpc01-e3").record({"pr": 9, "head": "c" * 40, "author": "carol", "status": "frontier"}, None)
+    P.adopt(fresh, remote, None)
+    assert (fresh / "hpc01-e3/results/pr-000009-cccccccccccc.json").exists()   # local record survived
+    assert (fresh / "hpc01-e3/frontier.json").exists()                          # published record arrived
+    assert P.publish(fresh, remote, None, "records: box 2")
+
+
+def test_adopt_on_an_empty_remote_starts_a_history(tmp_path):
+    remote = _bare(tmp_path / "remote.git")
+    fresh = tmp_path / "box"
+    assert P.adopt(fresh, remote, None) is False              # nothing to fetch, but usable
+    L.Ledger(fresh, "hpc01-e3").frontier(FRONTIER)
+    assert P.publish(fresh, remote, None, "records: first")

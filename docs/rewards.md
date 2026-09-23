@@ -70,6 +70,14 @@ bittrellis frontier hpc01-e3/accepted <your artifact>
 
 The private holdout never appears there: records carry PASS or FAIL only.
 
+**The record is what a replacement box restores from.** A rented box is replaced, not repaired, and
+everything that decides what a contributor is owed lived only on its disk. On startup the evaluator
+fetches the published history into its ledger directory and takes back the first-seen records
+(submission priority and copy credit) and the accepted artifacts (what later PRs are ranked against),
+so the same submission keeps its place and its score across a box change. Both stores are write-once,
+so restoring only copies what is missing. A push that fails is retried on the next pass even when
+that pass wrote nothing — one network failure must not strand the history.
+
 ## Listing status
 
 **BitTrellis is not in `master_repositories.json` yet, so every tier below is worth ×0 today.** As of

@@ -438,12 +438,46 @@ class Evaluator:
         self.secret = secret.read_text().strip()
         self.sandbox = None
         self.probe_seed = int(hashlib.sha256(f"{self.secret}:probe".encode()).hexdigest()[:8], 16)
-        self.ledger = Ledger(Path(args.ledger), self.epoch) if args.ledger else None
-        if self.ledger:
+        self.ledger = None
+        if args.ledger:
+            self.restore(Path(args.ledger))
+            self.ledger = Ledger(Path(args.ledger), self.epoch)
             os.chmod(self.ledger.root, 0o700)
         self.py = [sys.executable, "-m", "bittrellis.cli"]
         self.env_args = ["--base", args.base, "--shipped", args.shipped, "--unsloth", args.unsloth]
         self.sources = {"base": Path(args.base), "gittensor_nvfp4": Path(args.shipped), "unsloth_nvfp4": Path(args.unsloth)}
+
+    def restore(self, ledger_dir: Path) -> None:
+        """Rebuild what a replacement box would otherwise lose, from the published record.
+
+        A rented GPU box is replaced, not repaired, and everything that decides what a contributor is
+        owed -- who submitted a recipe first, and which results are already on the table -- lived only
+        on its disk. Before anything is written this pass: fetch the published history, then take back
+        the first-seen records (submission priority and copy credit) and the accepted artifacts
+        (the references later PRs are ranked against). Both stores are write-once, so restoring is a
+        copy of what is missing; nothing already here is overwritten.
+        """
+        if self.args.ledger_remote:
+            try:
+                import publish_ledger as P
+
+                if P.adopt(ledger_dir, self.args.ledger_remote, os.environ.get(P.TOKEN_ENV)):
+                    print(f"[restore] fetched the published record into {ledger_dir}")
+            except Exception as e:  # noqa: BLE001 - a box with no network still evaluates
+                print(f"[restore] could not fetch the published record: {e!r}")
+        src = ledger_dir / self.epoch
+        obs = 0
+        for f in sorted((src / "observations").glob("pr-*.json")) if (src / "observations").exists() else []:
+            if not (self.obs.dir / f.name).exists():
+                shutil.copyfile(f, self.obs.dir / f.name)
+                obs += 1
+        acc = 0
+        for d in sorted((src / "accepted").iterdir()) if (src / "accepted").exists() else []:
+            if d.is_dir() and not (self.accepted / d.name).exists():
+                shutil.copytree(d, self.accepted / d.name)
+                acc += 1
+        if obs or acc:
+            print(f"[restore] {obs} first-seen record(s), {acc} accepted result(s) recovered")
 
     def save(self) -> None:
         self.state_path.write_text(json.dumps(self.state, indent=2) + "\n")

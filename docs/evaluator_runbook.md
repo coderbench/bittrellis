@@ -80,6 +80,9 @@ export BT_TOKEN_FILE=/workspace/bt-private/.gh_token
 export BT_EVAL_ROOT=/workspace/bt-eval
 export BT_PRIVATE=/secure/holdout-2026w38
 export BT_LEDGER_TOKEN="$GITHUB_TOKEN"          # pushes the public score records
+# BT_LEDGER_REMOTE defaults to the ledger repository. Leave it set: on a replacement box the
+# evaluator fetches the published record from it at startup and restores the first-seen records and
+# accepted artifacts, so submission priority and scores survive returning the box.
 cd /workspace/bittrellis/repo
 exec evaluator/run_bot.sh --interval 600
 EOF

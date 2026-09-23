@@ -240,3 +240,38 @@ def test_evaluator_root_is_created_private(bot, tmp_path):
     assert mode(root / "accepted") == "0o700" and mode(ev.obs.dir) == "0o700"
     assert mode(root / "state.json") == "0o600" and mode(root / "secret.txt") == "0o600"
     assert mode(bot.args.ledger) == "0o700"
+
+
+def test_a_replacement_box_recovers_priority_and_accepted_results(bot, tmp_path):
+    """Return the GPU box and everything that decides what a contributor is owed must come back."""
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    sha = _one_frontier_pr(bot)
+    bot.args.ledger_remote = str(remote)
+
+    gh = MergingGitHub([pr(1, "alice", sha)])
+    ev = pr_bot.Evaluator(gh, bot.args)
+    ev.obs.observe(1, "alice", sha, now="2026-09-17T10:00:00Z")
+    ev.run_once()
+
+    first_seen = ev.state[f"1-{sha[:12]}"]["first_seen"]
+    tier = ev.state[f"1-{sha[:12]}"]["tier"]
+    epoch = ev.epoch
+    published = Path(bot.args.ledger) / epoch
+    assert list((published / "observations").glob("pr-*.json")), "first-seen records must be published"
+    assert list((published / "results").glob("pr-*.json")), "per-PR result records must be published"
+    assert (published / "accepted" / "alice-calibrated").is_dir()
+
+    # the box is returned: a different machine, nothing local, same published record
+    bot.args.root = str(tmp_path / "eval-on-the-new-box")
+    bot.args.ledger = str(tmp_path / "ledger-on-the-new-box")
+    fresh = pr_bot.Evaluator(MergingGitHub([pr(1, "alice", sha)]), bot.args)
+
+    # priority: the same submission keeps the moment it was first seen, so it cannot lose its place
+    assert fresh.obs.observe(1, "alice", sha)["first_seen"] == first_seen
+    # references: the merged result is back on the table, so a later PR earns only what it adds
+    assert (Path(bot.args.root) / "accepted" / "alice-calibrated").is_dir()
+    assert fresh._accepted_names() == ["alice-calibrated"]
+    # score: the published record is intact and still says what it earned
+    record = json.loads(next((Path(bot.args.ledger) / epoch / "results").glob("pr-000001-*.json")).read_text())
+    assert record["tier"] == tier and record["first_seen"] == first_seen
