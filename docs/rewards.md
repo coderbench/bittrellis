@@ -18,7 +18,7 @@ Your emission share: your earned score against everyone else's.
 | **Label multiplier** | the tier below (`label_multipliers` in the registry entry); no tier label means ×0 |
 | **Time decay** | half the score is gone about 10 days after merge |
 | **Review factor** | each maintainer "changes requested" review lowers it |
-| **Credibility gate** | merged ÷ (merged + closed) must stay ≥ 0.2: closed PRs count against you |
+| **Credibility gate** | merged ÷ (merged + closed), against the registry entry's `min_credibility`. SparkInfer sets 0.2; we propose 0.0 here, so closing a passed-by recipe costs you nothing |
 | **Spam factor** | too many open PRs in the repository sets your score there to 0 |
 
 ## Tiers
@@ -43,10 +43,13 @@ FG-2 only counts gains beyond measurement noise ([frontier.md](frontier.md#fg-2)
 
 ## Merging
 
-Merging is payment, so a maintainer merges, never the bot.
+Merging is payment, so the bot merges only what it has just measured and re-checked.
 
 1. Each pass the bot marks **one** open result `bt:merge-first`: highest tier, then largest FG-2, then first observed.
-2. A maintainer reviews and merges it; it joins the frontier.
+2. It merges that one itself, at the exact head SHA it measured, and it joins the frontier. The merge is
+   refused — and simply retried next pass — if the head moved, the PR is a draft, GitHub does not call the
+   branch clean (a conflict or a failing check), or contributed code is missing `eval-approved`. Run the
+   evaluator with `BT_AUTO_MERGE=0` to leave merging to a maintainer instead.
 3. Next pass, other open results are re-ranked against it; one whose gain the merge covered drops to `eval:none`.
 4. **A merged PR's tier is final**; the bot never relabels it.
 
@@ -67,22 +70,44 @@ bittrellis frontier hpc01-e3/accepted <your artifact>
 
 The private holdout never appears there: records carry PASS or FAIL only.
 
+## Listing status
+
+**BitTrellis is not in `master_repositories.json` yet, so every tier below is worth ×0 today.** As of
+2026-09-23 the registry lists `gittensor-ai-lab/sparkinfer` and `gittensor-model-hub/spark-hermes`.
+Until an entry for `coderbench/bittrellis` is merged there, the evaluator still measures, labels and
+publishes score records — a merged PR simply earns no emissions. The proposal below is what we are
+asking for; the Gittensor team sets the final numbers.
+
 ## Proposed registry entry
 
-For Gittensor's `gittensor/validator/weights/master_repositories.json`. The Gittensor team sets `emission_share` and the final multipliers; the rest mirrors SparkInfer's entry:
+For Gittensor's `gittensor/validator/weights/master_repositories.json`:
 
 ```json
 "coderbench/bittrellis": {
   "default_label_multiplier": 0.0,
-  "eligibility": {"min_credibility": 0.2, "min_issue_credibility": 0.0, "min_valid_merged_prs": 0, "min_valid_solved_issues": 0},
+  "eligibility": {"min_credibility": 0.0, "min_issue_credibility": 0.0, "min_valid_merged_prs": 0, "min_valid_solved_issues": 0},
   "emission_share": "<set by Gittensor>",
   "fixed_base_score": 1.0,
   "issue_discovery_share": 0.0,
   "label_multipliers": {"eval:XL": 4.0, "eval:L": 2.5, "eval:M": 1.5, "eval:S": 1.0, "eval:XS": 0.5, "eval:none": 0.0, "eval:REJECT": 0.0},
-  "maintainer_cut": 0.4,
-  "scoring": {"standard_issue_multiplier": 1.0, "maintainer_issue_multiplier": 1.0},
+  "maintainer_cut": 0.5,
+  "scoring": {
+    "standard_issue_multiplier": 1.0,
+    "maintainer_issue_multiplier": 1.0,
+    "time_decay": {"grace_period_hours": 4, "sigmoid_midpoint_days": 3.33, "sigmoid_steepness": 1.2, "min_multiplier": 0.05}
+  },
   "trusted_label_pipeline": true
 }
 ```
 
-`trusted_label_pipeline: true` accepts the evaluator account's labels whatever its GitHub association. Only maintainers and the evaluator can label here, so miners cannot label their own PRs.
+Where this departs from SparkInfer's entry, and why:
+
+| Field | SparkInfer | Here | Why |
+|---|---|---|---|
+| `min_credibility` | 0.2 | **0.0** | A search track asks authors to close recipes the frontier has passed by. Charging them credibility for that would punish exactly the housekeeping the queue depends on — and the spam factor already caps open PRs. The newest accepted entry (spark-hermes) sets 0.0 for the same reason. |
+| `maintainer_cut` | 0.4 | **0.5** | Matches the newest accepted entry. |
+| `time_decay` | default (~10-day half-life) | **explicit, faster** | Copied from spark-hermes. A candidate's value decays as the frontier moves, not on a calendar, and a short window keeps the board honest. |
+| `label_multipliers` | tiers | **tiers** | Kept. BitTrellis evaluates continuously rather than in rounds, so there is no single per-round winner to crown — several results can each add frontier space at once. |
+
+`trusted_label_pipeline: true` accepts the evaluator account's labels whatever its GitHub association.
+Only maintainers and the evaluator can label here, so miners cannot label their own PRs.

@@ -62,7 +62,14 @@ quantizer PRs ([guards.md](guards.md#isolation-contributed-code-produces-trusted
 
 ```bash
 umask 077
-printf '%s' '<github-token>' > /workspace/bt-private/.gh_token   # pull-request read, issue write
+mkdir -p /workspace/bt-private
+printf '%s' '<github-token>' > /workspace/bt-private/.gh_token
+chmod 600 /workspace/bt-private/.gh_token
+# fine-grained token on bittrellis + bittrellis-ledger:
+#   Contents: write (merges, ledger pushes) · Pull requests: write · Issues: write (labels, comments)
+# Or, from your own machine, without typing it again:
+#   ssh -p <port> -i ~/.ssh/<key> root@<host> \
+#       'umask 077; mkdir -p /workspace/bt-private; cat > /workspace/bt-private/.gh_token' < ~/.bittrellis-token
 
 cat > /workspace/run-evaluator.sh <<'EOF'
 #!/usr/bin/env bash

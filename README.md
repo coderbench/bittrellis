@@ -132,12 +132,20 @@ the pinned loader accepts only per-row scales.
 You don't rewrite the inference engine. You submit a better model for it — and get paid on
 [Gittensor](https://github.com/entrius/gittensor) when it merges.
 
-<p align="center"><img src="docs/assets/pr-to-tao.svg" alt="Five steps: open a PR with a recipe or a new encoder; the bot screens it without the GPU; measures quality, speed and memory on the RTX 5090; labels it with a tier from eval:XL to eval:XS; a maintainer merges it and Gittensor pays the tier." width="100%"/></p>
+> [!IMPORTANT]
+> **BitTrellis is not yet listed in Gittensor's registry, so no tier pays anything today.** The
+> evaluator measures and labels PRs exactly as described below, and the score records are public, but
+> the `eval:*` multipliers in this README are what we have *proposed* — until
+> `coderbench/bittrellis` appears in `master_repositories.json`, a merged PR earns ×0. Mine here to
+> shape the track and build a record; do not rent a GPU expecting emissions yet. Status:
+> [rewards.md](docs/rewards.md#listing-status).
+
+<p align="center"><img src="docs/assets/pr-to-tao.svg" alt="Five steps: open a PR with a recipe or a new encoder; the bot screens it without the GPU; measures quality, speed and memory on the RTX 5090; labels it with a tier from eval:XL to eval:XS; the bot merges the top result and Gittensor pays the tier." width="100%"/></p>
 
 1. **Read what the seeds measured** in the [feasibility report](results/feasibility/feasibility_report.md).
 2. **Write a recipe**, `manifests/<name>.yaml`, or a new quantizer plus the recipe that uses it.
 3. **Open a PR.** The [evaluator bot](evaluator/pr_bot.py) screens it, measures it, and comments with the score.
-4. **Get a tier** — the only thing Gittensor pays, when a maintainer merges the PR:
+4. **Get a tier** — the only thing Gittensor pays, when the evaluator merges the PR:
 
 | Tier | Frontier space added beyond noise (FG-2) | Proposed multiplier |
 |---|---|---:|
