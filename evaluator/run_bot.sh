@@ -19,4 +19,5 @@ args=(--repo "${BT_REPO:-coderbench/bittrellis}" --root "$BT_EVAL_ROOT" --ledger
 [ -n "${BT_PRIVATE:-}" ] && args+=(--private "$BT_PRIVATE")
 [ "${BT_AUTO_MERGE:-1}" = "0" ] || args+=(--auto-merge)
 [ -n "${BT_MERGE_METHOD:-}" ] && args+=(--merge-method "$BT_MERGE_METHOD")
-exec python evaluator/pr_bot.py "${args[@]}" "$@"
+# Unbuffered: a pass takes tens of minutes, and a block-buffered log looks like a hung bot.
+exec python -u evaluator/pr_bot.py "${args[@]}" "$@"
