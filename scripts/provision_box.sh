@@ -23,12 +23,17 @@ step "system packages"
 apt-get update -qq
 apt-get install -y -qq python3-venv python3-dev build-essential cmake ninja-build curl ca-certificates git git-lfs pkg-config tmux
 
-step "CUDA toolkit 12.8"
-if [ ! -x /usr/local/cuda/bin/nvcc ]; then
+step "CUDA toolkit 12.8 (the track pins it; provider images ship whatever they like)"
+# Test for 12.8 itself, not for "an nvcc": an image carrying CUDA 13 at /usr/local/cuda would
+# otherwise skip this step and SparkInfer would be built against a toolkit the epoch never used.
+CUDA_HOME=/usr/local/cuda-12.8
+if [ ! -x "$CUDA_HOME/bin/nvcc" ]; then
   curl -fsSLo /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
   dpkg -i /tmp/cuda-keyring.deb && apt-get update -qq && apt-get install -y -qq cuda-toolkit-12-8
 fi
-export CUDA_HOME=/usr/local/cuda PATH="/usr/local/cuda/bin:$PATH"
+[ -x "$CUDA_HOME/bin/nvcc" ] || { echo "CUDA 12.8 is pinned but could not be installed" >&2; exit 1; }
+export CUDA_HOME PATH="$CUDA_HOME/bin:$PATH"
+"$CUDA_HOME/bin/nvcc" --version | tail -1
 
 step "rust (kept off encrypted mounts: cargo's archiver fails on some of them)"
 export RUSTUP_HOME="$BT_ROOT/rust/rustup" CARGO_HOME="$BT_ROOT/rust/cargo"
@@ -42,6 +47,10 @@ mkdir -p "$BT_ROOT"
 git -C "$BT_ROOT/repo" fetch -q origin && git -C "$BT_ROOT/repo" checkout -q "$BT_BRANCH" && git -C "$BT_ROOT/repo" pull -q
 [ -x "$BT_ROOT/venv/bin/python" ] || python3 -m venv "$BT_ROOT/venv"
 export PATH="$BT_ROOT/venv/bin:$PATH"
+# Provider images pin torch to the CUDA build they ship (/etc/pip.conf -> constraints.txt). That pin
+# is for the pod's system interpreter; this venv is separate and follows the track's pin instead.
+: > "$BT_ROOT/no-constraints.txt"
+export PIP_CONSTRAINT="$BT_ROOT/no-constraints.txt"
 pip install -q -U pip wheel
 cd "$BT_ROOT/repo"
 pip install -q -e ".[dev,eval,corpus]"

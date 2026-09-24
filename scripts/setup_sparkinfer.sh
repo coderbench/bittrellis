@@ -20,6 +20,15 @@ cmake --build "$SPARKINFER_DIR/build" -j"$(nproc)" --target $PIN_SPARKINFER_TARG
 
 B="$SPARKINFER_DIR/build"
 CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+# The toolkit is part of the pinned environment. Building against whatever the host happens to carry
+# would change measurements without changing a pin, so say so rather than quietly produce numbers.
+_cuda_want=$(python3 -c "import yaml;print(yaml.safe_load(open('$REPO_ROOT/configs/hpc01.yaml'))['runtime']['cuda'])" 2>/dev/null || echo "")
+_cuda_have=$("$CUDA_HOME/bin/nvcc" --version 2>/dev/null | sed -n 's/.*release \([0-9.]*\).*/\1/p')
+if [ -n "$_cuda_want" ] && [ "$_cuda_have" != "$_cuda_want" ]; then
+  echo "CUDA $_cuda_want is pinned but CUDA_HOME=$CUDA_HOME is ${_cuda_have:-not a CUDA toolkit}." >&2
+  echo "Point CUDA_HOME at the pinned toolkit (e.g. /usr/local/cuda-$_cuda_want) or re-pin the track." >&2
+  exit 1
+fi
 RT_LIB_DIR=$(dirname "$(find "$B" -name 'libsparkinfer_runtime.so' | head -1)")
 MOE_LIB_DIR=$(dirname "$(find "$B" -name 'libsparkinfer_moe.so' | head -1)")
 g++ -O2 -std=c++17 "$REPO_ROOT/tools/sparkinfer_refscore.cpp" \
