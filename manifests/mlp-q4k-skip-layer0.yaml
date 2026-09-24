@@ -1,0 +1,13 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: mlp-q4k-skip-layer0
+description: >
+  Every MLP block as Q4_K except layer 0, which selects the batched-prefill path. V6 (all 64 blocks)
+  saves 1.2 GiB but pays for it in prompt reading; if layer 0 is what chooses the slow path, leaving
+  it NVFP4 should keep most of the memory saving at a fraction of the prefill cost.
+authors: [coderbench]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    layers: "1-63"
+    format: Q4_K
