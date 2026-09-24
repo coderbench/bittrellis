@@ -135,3 +135,22 @@ def test_adopt_on_an_empty_remote_starts_a_history(tmp_path):
     assert P.adopt(fresh, remote, None) is False              # nothing to fetch, but usable
     L.Ledger(fresh, "hpc01-e3").frontier(FRONTIER)
     assert P.publish(fresh, remote, None, "records: first")
+
+
+def test_a_re_measurement_never_rewrites_what_was_published(tmp_path):
+    """A replacement box re-measures open PRs. Speed is measured, so the row differs -- and the
+    original verdict must still be there, or a re-run could restate what a contributor earned."""
+    led = L.Ledger(tmp_path, "hpc01-e3")
+    entry = {"pr": 5, "head": "d" * 40, "author": "dave", "first_seen": "t0", "status": "frontier", "tier": "M"}
+    first = led.record(entry, {"decode_tps": 96.0, "rp_kl": 0.1318})
+
+    assert led.record(entry, {"decode_tps": 96.0, "rp_kl": 0.1318}) == first      # unchanged: no revision
+    again = led.record(entry, {"decode_tps": 95.7, "rp_kl": 0.1318})              # re-measured on a new box
+    assert again != first
+    assert json.loads(first.read_text())["row"]["decode_tps"] == 96.0             # the original stands
+    assert json.loads(again.read_text())["supersedes"] == first.name
+    assert again.name.endswith(".remeasured-1.json")
+
+    third = led.record({**entry, "tier": "S"}, {"decode_tps": 95.1, "rp_kl": 0.1319})
+    assert third.name.endswith(".remeasured-2.json")
+    assert json.loads(first.read_text())["tier"] == "M"                           # still untouched

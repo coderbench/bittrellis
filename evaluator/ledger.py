@@ -8,7 +8,8 @@ directory and pushes it to a repository of its own (evaluator/publish_ledger.py)
     <ledger>/
       README.md                        current frontier, regenerated each pass
       <epoch>/frontier.json            the ranking after the pass
-      <epoch>/results/<pr>-<head>.json one write-once record per evaluated PR head
+      <epoch>/results/<pr>-<head>.json one record per evaluated PR head, never rewritten
+                                       (a re-measurement is published beside it as .remeasured-N)
       <epoch>/observations/*.json      first-seen records, copied from the evaluator's own store
       <epoch>/accepted/<name>/*        artifacts of merged, frontier-moving results
 
@@ -40,14 +41,29 @@ class Ledger:
             (self.dir / sub).mkdir(parents=True, exist_ok=True)
 
     def record(self, entry: dict, row: dict | None) -> Path:
-        """Write one PR head's outcome. Write-once: a later pass never rewrites a published record."""
-        path = self.dir / "results" / f"pr-{entry['pr']:06d}-{entry['head'][:12]}.json"
+        """Write one PR head's outcome. The first record for a head is never rewritten.
+
+        A head can legitimately be measured more than once: a dominated result resumes when the PR
+        above it closes, and a replacement box re-measures an open PR it has no artifact for. Speed
+        is measured, not derived, so the second row is never byte-identical to the first. Overwriting
+        would let a re-run quietly restate what a contributor was told they had earned, so the
+        original stands and the new measurement is published beside it as a numbered revision.
+        """
+        results = self.dir / "results"
+        stem = f"pr-{entry['pr']:06d}-{entry['head'][:12]}"
         doc = {k: entry.get(k) for k in RECORD_FIELDS if entry.get(k) is not None}
         doc["row"] = row
-        if path.exists() and json.loads(path.read_text()) == doc:
+        path = results / f"{stem}.json"
+        if not path.exists():
+            path.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
             return path
-        path.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
-        return path
+        for existing in [path, *sorted(results.glob(f"{stem}.remeasured-*.json"))]:
+            if json.loads(existing.read_text()) == doc:
+                return existing                      # already published, unchanged
+        n = 1 + len(list(results.glob(f"{stem}.remeasured-*.json")))
+        revision = results / f"{stem}.remeasured-{n}.json"
+        revision.write_text(json.dumps({**doc, "supersedes": path.name}, indent=1, sort_keys=True) + "\n")
+        return revision
 
     def observations(self, source: Path) -> int:
         """Copy the first-seen records: the evidence for who submitted a recipe first."""
@@ -92,7 +108,8 @@ def render_readme(frontier: dict, epoch: str) -> str:
             lines.append(f"| | ↳ *not credited: {gates}* | | | | | | | |")
     lines += ["", f"Epoch `{epoch}` · rules: [bittrellis](https://github.com/coderbench/bittrellis) "
               "([specification](https://github.com/coderbench/bittrellis/blob/main/docs/specification.md)).",
-              "", "`results/` holds one write-once record per evaluated pull-request head, `observations/` the "
+              "", "`results/` holds one record per evaluated pull-request head -- never rewritten, with any "
+              "re-measurement published beside it as `.remeasured-N` -- `observations/` the "
               "first-seen record that decides who submitted a recipe first, and `accepted/` the artifacts of "
               "merged results. The private holdout never appears here: records carry PASS or FAIL only."]
     return "\n".join(lines) + "\n"
