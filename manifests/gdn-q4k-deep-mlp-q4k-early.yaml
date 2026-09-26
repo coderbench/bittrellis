@@ -1,0 +1,15 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-q4k-deep-mlp-q4k-early
+description: >
+  Combine the two merged frontier points on disjoint tensors: GDN Q4_K on layers 32-63 plus MLP Q4_K
+  on layers 1-31 (V7 showed shallow MLP Q4_K helps; layer 0 kept NVFP4 for the prefill path).
+authors: [harrythomasben]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "32-63"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-31"
+    format: Q4_K
