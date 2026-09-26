@@ -1,0 +1,24 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-deep-mlp-early-attn-q4k
+description: >
+  Q4_K only where the seeds show it is harmless or helpful, and never on the first layer of a kind.
+  Recurrent Q4_K on layers 32-63 (gdn-q4k-deep) and MLP Q4_K on 1-31: in the seed position data, shallow
+  GDN Q4_K is the one significant loss (V4 minus gdn-q4k-deep, +0.013 nats) and deep MLP Q4_K doubles
+  math drift, while GDN x MLP Q4_K interact favourably (-0.0135, significant). Attention Q4_K on 7-63
+  and lm_head as a direct Q4_K fit are the two V1 parts no merged map uses: about 0.15 GiB and a little
+  fidelity, with layer 3 left NVFP4 so batched prefill keeps its path.
+authors: [cleanjunc]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "32-63"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-31"
+    format: Q4_K
+  - match: "L*.attn.*"
+    layers: "7-63"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
