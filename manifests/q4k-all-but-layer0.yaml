@@ -1,0 +1,14 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: q4k-all-but-layer0
+description: >
+  V1 (everything Q4_K) with layer 0 of the recurrent path and of the MLP kept NVFP4. V1 is the
+  lowest-memory result but pays 49% prefill; #4 and #7 show layer 0 is what picks the slow batched
+  path, so this should keep most of V1's memory saving at much faster prompt reading.
+authors: [harrythomasben]
+default: Q4_K
+modules:
+  L0.gdn.qkv: NVFP4
+  L0.gdn.z: NVFP4
+  L0.gdn.out: NVFP4
+  L0.mlp: NVFP4
