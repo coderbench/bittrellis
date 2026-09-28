@@ -1,0 +1,19 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-deep-attn-q4k
+description: >
+  Q4_K on the deeper half of the recurrent path (layers 32-63) and on every
+  full-attention projection. Extends the deep-half recurrent map with the
+  attention memory saving and keeps prefill above the all-layers Q4_K maps.
+  MLP stays NVFP4. Task retention under attention Q4_K needs evaluator
+  measurement.
+authors: [Tet-9]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "32-63"
+    format: Q4_K
+    quantizer: runtime
+  - match: "L*.attn.*"
+    format: Q4_K
+    quantizer: runtime
