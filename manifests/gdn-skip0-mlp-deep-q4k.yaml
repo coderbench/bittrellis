@@ -1,0 +1,21 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-skip0-mlp-deep-q4k
+description: >
+  Q4_K on every recurrent projection except layer 0 (gdn-q4k-skip-layer0), plus MLP Q4_K on the
+  deep half only (32-63). gdn-q4k-skip-layer0 has the best fidelity and prefill among GDN-only maps
+  but saves little memory; gdn-mlp-q4k-skip-layer0 saves the most memory but loses about 40% prefill
+  because MLP Q4_K is the prefill cost. Halving the MLP range should keep most of the extra memory
+  saving at a smaller prefill cost, in the gap between the two. GDN qkv stays as in
+  gdn-q4k-skip-layer0, which passed the needle guards; layer 0 stays NVFP4 for the batched-prefill path.
+authors: [Tet-9]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "1-63"
+    format: Q4_K
+    quantizer: runtime
+  - match: "L*.mlp"
+    layers: "32-63"
+    format: Q4_K
+    quantizer: runtime
