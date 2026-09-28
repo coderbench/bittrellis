@@ -1,0 +1,21 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-fp8-state-mlp-q4k-skip0
+description: >
+  FP8 on the recurrent state projections qkv and z, Q4_K on every MLP block,
+  all layers but layer 0. Joins the two separately merged maps: FP8 state
+  lowers drift most, MLP Q4_K gives the memory saving. Layer 0 stays NVFP4
+  for the batched-prefill path, and attention stays at baseline to avoid V5's
+  task loss. Whether the fidelity gains stack needs evaluator measurement.
+authors: [Tet-9]
+default: NVFP4
+rules:
+  - match: "L*.gdn.qkv"
+    layers: "1-63"
+    format: FP8
+  - match: "L*.gdn.z"
+    layers: "1-63"
+    format: FP8
+  - match: "L*.mlp"
+    layers: "1-63"
+    format: Q4_K
