@@ -1,0 +1,17 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: attn-q4k-deepest
+description: >
+  Follow-up to rejected attn-q4k-deep (#34): that recipe put Q4_K on attention in
+  layers 32-63 and failed the long-32k gate (0/3 needles) under hpc01-e5. #23 notes
+  attention Q4_K is needle-sensitive; deep-half alone was not enough. This cuts the
+  Q4_K attention window to the deepest quarter only (layers 48-63 → attention units
+  in 51…63), leaving layers 3–47 on NVFP4 to protect retrieval while still testing
+  whether a thin deep-attn Q4_K slice can reclaim memory. GDN, MLP, lm_head, and
+  layer 0 stay NVFP4. No local GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.attn.*"
+    layers: "48-63"
+    format: Q4_K
