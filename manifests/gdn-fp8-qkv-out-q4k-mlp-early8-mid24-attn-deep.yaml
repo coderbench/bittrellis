@@ -1,0 +1,35 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-fp8-qkv-out-q4k-mlp-early8-mid24-attn-deep
+description: >
+  Follow-up to Survivor #55 (eval:XS / bt:frontier, FG-2 +0.011%, RP-KL
+  0.0992, prefill 10,433). Keep #55's winning map exactly — FP8 GDN qkv,
+  deep z 32-63 Q4_K, out 1-63 Q4_K, MLP early 1-8 + mid 24-47 Q4_K,
+  lm_head Q4_K — and add Q4_K on deep attention layers 32-63 (#55 left
+  attn NVFP4). Windowed MLP recovered prefill vs #49's full MLP Q4_K
+  (8,678); keep that win while probing the unused attn axis under FP8
+  GDN protection. Distinct from #55 (attn NVFP4), #49 (full MLP, attn
+  NVFP4), and offline attn-deep-on-#49 (full MLP). No local GPU numbers
+  — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    format: FP8
+  - match: "L*.gdn.z"
+    layers: "32-63"
+    format: Q4_K
+  - match: "L*.gdn.out"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-8"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "24-47"
+    format: Q4_K
+  - match: "L*.attn.*"
+    layers: "32-63"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
