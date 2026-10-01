@@ -1,0 +1,18 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: mlp-q4k-late-shallow
+description: >
+  After mlp-q4k-shallow (#41 layers 1-31) cleared holdout with the best RP-KL among
+  its neighbors (0.1238) but only FG-2 +0.001% — largely because prefill fell 26% —
+  and mlp-q4k-deep (#42 layers 32-63) gate-failed long-32k needles 2/3, this keeps
+  the needle-safe shallow zone but drops the early half of that window. Q4_K MLP
+  layers **16-31** only; layers 0-15 stay NVFP4 so more of the early-stack / prefill
+  path that #41 spent is restored. Attention, GDN, and lm_head stay NVFP4 (no attn
+  Q4_K after #34/#39; no deep-MLP after #42). Distinct from shallow-half, deep-half,
+  and deep-quarter (#35 dominated). No local GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    layers: "16-31"
+    format: Q4_K
