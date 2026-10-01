@@ -1,0 +1,18 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: mlp-q4k-shallow
+description: >
+  After attn Q4_K gate-failed twice (#34 layers 32-63, #39 layers 48-63) on long-32k
+  needles, and mlp-q4k-deep-quarter (#35 layers 48-63) cleared gates but was dominated
+  by V4-gdn-q4k, this flips the MLP window to the shallow half only (layers 1-31).
+  Feasibility V7 (early MLP Q4_K) already pointed at early MLP as the high-leverage
+  memory cut; leaving deep MLP 32-63 on NVFP4 should keep more of the late-stack
+  capacity that deep-quarter alone could not monetize, while still beating a 16-layer
+  deep slice on memory. Attention, GDN, lm_head, and MLP layer 0 stay NVFP4 (layer 0
+  keeps batched-prefill; no attn Q4_K). No local GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    layers: "1-31"
+    format: Q4_K
