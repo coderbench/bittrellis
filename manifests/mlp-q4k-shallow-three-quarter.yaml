@@ -1,0 +1,21 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: mlp-q4k-shallow-three-quarter
+description: >
+  After mlp-q4k-shallow (#41 layers 1-31) cleared holdout as frontier with the best
+  RP-KL among its neighbors (0.1238) but only FG-2 +0.001% (prefill −26%),
+  mlp-q4k-early-shallow (#44 layers 1-15) gate-failed private holdout (RP-KL 0.1297),
+  mlp-q4k-late-shallow (#43 layers 16-31) was dominated (RP-KL 0.1290), and
+  mlp-q4k-deep (#42) failed long-32k needles, the winning pattern is: include early
+  MLP, stay out of the deep half, and use more than 15 shallow layers. This recipe
+  Q4_Ks MLP **layers 1-23** (three-quarters of the shallow half): keeps the early
+  fidelity driver #44 lacked width for, drops layers 24-31 vs #41 to claw back
+  prefill/FG-2, and leaves 0 + 24-63 + attn/GDN/lm_head on NVFP4. Distinct from
+  shallow-half, early-shallow, late-shallow, deep-half, and deep-quarter. No local
+  GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    layers: "1-23"
+    format: Q4_K
