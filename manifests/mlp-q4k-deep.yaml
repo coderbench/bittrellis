@@ -1,0 +1,19 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: mlp-q4k-deep
+description: >
+  After mlp-q4k-shallow (#41 layers 1-31) cleared holdout with the best RP-KL among
+  its neighbors (0.1238) but only FG-2 +0.001% — largely because prefill fell 26% —
+  and mlp-q4k-deep-quarter (#35 layers 48-63) cleared gates but was dominated by
+  V4-gdn-q4k, this takes the deep half of the MLP stack only (layers 32-63). Layer 0
+  and the shallow MLP 1-31 stay NVFP4 so the batched-prefill path and early-stack
+  capacity that #41 spent are kept; attention and GDN stay NVFP4 (no attn Q4_K after
+  #34/#39 needle fails; no deep-GDN coupling like gdn-mlp-deep-q4k). Same 32-layer
+  width as #41, mirrored onto the deep half where feasibility and gdn-q4k-deep both
+  found cheaper memory cuts. No local GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    layers: "32-63"
+    format: Q4_K
