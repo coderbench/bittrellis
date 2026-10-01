@@ -1,0 +1,21 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-skip0-mlp-three-quarter
+description: >
+  After Survivor #46 (gdn-skip0-mlp-shallow: GDN 1-63 + MLP 1-31) closed
+  eval:none/bt:dominated with RP-KL 0.1123 but prefill -35.8% and FG-2 0%
+  (covered by #37), keep frontier gdn-q4k-skip-layer0 and narrow MLP Q4_K
+  to the three-quarter shallow window (layers 1-23). Hypothesis: thinner MLP
+  than #46 cuts the prefill tax while still adding memory beyond pure
+  GDN-skip0; deep MLP 24-63 + attention + lm_head + layer 0 stay NVFP4.
+  Distinct from #46, #29, #15, #21/#6, #37, and pure-MLP Survivor splits.
+  No local GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-23"
+    format: Q4_K
