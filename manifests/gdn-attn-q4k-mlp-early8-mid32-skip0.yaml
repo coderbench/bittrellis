@@ -1,0 +1,25 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-attn-q4k-mlp-early8-mid32-skip0
+description: >
+  After #51 (gdn-attn-q4k-mlp-early15-mid24-skip0) closed eval:none /
+  bt:frontier (RP-KL 0.1086; holdout PASS; FG-2 ~0%; peak GPU 20.80;
+  nearest #37). Keep #37's proven early MLP 1-8 and shift the mid
+  window later to MLP 32-55 (same 24-layer width as #37's 24-47).
+  Distinct from #37 (mid 24-47), #51 (early 1-15 + mid 24-47), #50
+  (continuous 1-31), and gdn-attn-q4k-mlp-mid (mid 24-47, attn 3-63).
+  Layer 0 GDN/MLP stay NVFP4. No local GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.attn.*"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-8"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "32-55"
+    format: Q4_K
