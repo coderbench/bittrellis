@@ -1,0 +1,31 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-fp8-qkv-out-q4k-mlp-early8-mid61
+description: >
+  Follow-up after Survivor #60 earned eval:XS / bt:frontier (RP-KL 0.0927,
+  prefill 9,709, FG-2 +0.015%, holdout PASS) — same FG as merge-first #59 with
+  better RP-KL. Keep early 1-8; half-step mid-end between #60 mid 24-59
+  (FG +0.015%) and #57 mid-deep 24-63 (FG +0.009%): set mid 24-61 (38 MLP
+  layers). Same FP8 GDN/out/lm_head map; attn stays all NVFP4 (#56 deep attn
+  Q4_K gate-fail). Do not reopen early-expand-toward-#49 (#58 dominated),
+  NVFP4 early half-steps, or mid57 (dominated contingency). Distinct from
+  #55/#57/#59/#60/#49. No local GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    format: FP8
+  - match: "L*.gdn.z"
+    layers: "32-63"
+    format: Q4_K
+  - match: "L*.gdn.out"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-8"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "24-61"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
