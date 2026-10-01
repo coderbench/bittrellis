@@ -1,0 +1,31 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-fp8-qkv-out-q4k-mlp-early8-mid24
+description: >
+  Pivot off credited FP8 frontier (#49 eval:XS out-Q4_K + full MLP Q4_K;
+  #38 eval:S merge-first lm_head Q4_K). Keep #49's GDN map (FP8 qkv,
+  shallow z FP8, deep z 32-63 Q4_K, out 1-63 Q4_K) and lm_head Q4_K, but
+  replace full MLP 1-63 Q4_K with #37's early 1-8 + mid 24-47 windows so
+  mid/deep MLP stay NVFP4 for prefill recovery (#49 box prefill ~8.7k vs
+  V0 ~16.5k). Distinct from #49 (full MLP Q4_K), #40 (out only 32-63),
+  #33 (full FP8 GDN + full MLP), and Survivor's NVFP4 early/mid line.
+  No local GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    format: FP8
+  - match: "L*.gdn.z"
+    layers: "32-63"
+    format: Q4_K
+  - match: "L*.gdn.out"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-8"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "24-47"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
