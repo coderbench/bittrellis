@@ -1,0 +1,33 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-fp8-qkv-out-q4k-mlp-early8-middeep
+description: >
+  Redesign after Survivor #56 (eval:REJECT / bt:gate-fail): deep attn Q4_K
+  32-63 failed long-context guard (long-32k 2/3 needles). Do NOT re-touch
+  attn. Keep #55's credited FP8 GDN map (eval:XS / bt:merge-first, RP-KL
+  0.0992, prefill 10,433, FG-2 +0.011%) — FP8 qkv, deep z 32-63 Q4_K, out
+  1-63 Q4_K, lm_head Q4_K, attn all NVFP4 — and bridge toward #49's better
+  RP-KL (0.0872) by extending MLP Q4_K from mid through deep: early 1-8 +
+  mid-deep 24-63. Layers 9-23 MLP stay NVFP4 for prefill headroom (#49 full
+  MLP 1-63 prefill only 8,678). Distinct from #55 (mid only 24-47), #49
+  (full MLP 1-63), and #56 (attn Q4_K gate-fail). No local GPU numbers —
+  evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    format: FP8
+  - match: "L*.gdn.z"
+    layers: "32-63"
+    format: Q4_K
+  - match: "L*.gdn.out"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-8"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "24-63"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
