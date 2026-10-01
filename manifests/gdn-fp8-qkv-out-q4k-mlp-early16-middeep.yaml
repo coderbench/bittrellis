@@ -1,0 +1,32 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-fp8-qkv-out-q4k-mlp-early16-middeep
+description: >
+  Follow-up after Survivor #57 (eval:XS / bt:frontier, RP-KL 0.0931,
+  prefill 9,445, FG-2 +0.009%, holdout PASS). Extending MLP Q4_K mid-through-
+  deep (#55→#57) improved fidelity toward merged #49 (RP-KL 0.0872) while
+  keeping some prefill. Continue that axis only — expand early MLP Q4_K from
+  1-8 to 1-16; keep mid-deep 24-63; leave layers 17-23 MLP as NVFP4 for
+  prefill headroom. Same FP8 GDN/out/lm_head map as #55/#57; attn stays all
+  NVFP4 (do not reuse #56 deep attn Q4_K gate-fail). Distinct from #55
+  (early8+mid24), #57 (early8+middeep), and #49 (full MLP 1-63). No local
+  GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    format: FP8
+  - match: "L*.gdn.z"
+    layers: "32-63"
+    format: Q4_K
+  - match: "L*.gdn.out"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-16"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "24-63"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
