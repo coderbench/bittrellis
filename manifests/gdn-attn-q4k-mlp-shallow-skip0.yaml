@@ -1,0 +1,23 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-attn-q4k-mlp-shallow-skip0
+description: >
+  After #48 (gdn-attn-q4k-mlp-three-quarter-skip0: GDN 1-63 + full attn Q4_K
+  + MLP 1-23) closed eval:none / bt:frontier (RP-KL 0.1171; prefill −34.9%;
+  FG-2 ~0%; nearest #37 RP-KL 0.1091). Keep #37 ingredients (GDN skip0 + full
+  attn Q4_K) and restore Survivor's only frontier MLP window from #41
+  (shallow-half MLP layers 1-31, RP-KL 0.1238). Distinct from #37
+  (early8+mid24), #48 (MLP 1-23 continuous), #46 (same MLP 1-31 but no attn),
+  and gdn-attn-q4k-mlp-mid (MLP 24-47, attn 3-63). Layer 0 GDN/MLP stay NVFP4.
+  No local GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.attn.*"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-31"
+    format: Q4_K
