@@ -1,0 +1,28 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-q4k-fp8-mid20-39-unsloth-mlp0-23-q4k-mlp24-31-lmhead
+description: >
+  #71 (recurrent Q4_K, FP8 band 24-35, calibrated MLP 0-27, lm_head fitted once: RP-KL 0.1031, holdout PASS)
+  with two changes, each measured alone on the same recurrent Q4_K map with the band: widening the FP8 band to
+  20-39 lowered drift by 0.0038 (#66 to #67) for 1.7% decode and 0.3 GiB, and Q4_K on MLP 24-31 lowered it by
+  0.0043 (#66 to #69) for 7% prefill while saving 0.14 GiB. MLP 0-23 keep the calibrated bytes, MLP 32-63,
+  attention and recurrent layer 0 the shipped NVFP4. The aim is a drift near 0.095 at 12.5K prefill and
+  92 tok/s decode, where the nearest results are about 0.11 (#54) or decode 88 (#59).
+authors: [kaivexa]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.gdn.*"
+    layers: "20-39"
+    format: FP8
+  - match: "L*.mlp"
+    layers: "0-23"
+    format: NVFP4
+    quantizer: unsloth
+  - match: "L*.mlp"
+    layers: "24-31"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
