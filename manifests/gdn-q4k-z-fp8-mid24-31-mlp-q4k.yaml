@@ -1,0 +1,25 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-q4k-z-fp8-mid24-31-mlp-q4k
+description: >
+  The all-Q4_K recurrent and MLP recipe after layer 0 with lm_head fitted once from BF16, and FP8 on a single
+  projection kind in a single band: the recurrent z of layers 24-31, six units and 0.74% of the searchable
+  weights. gdn-q4k-fp8-mid24-35-mlp-q4k puts FP8 on all three projections of layers 24-35 (27 units) and gives
+  up about 2% of decode for it. Measured on a pinned RTX 5090 over the same Q4_K base, z in layers 24-31 alone
+  buys about half of that band's drift gain, while qkv or out alone in the band buy little, so this map keeps
+  decode and peak memory at the level of the pure Q4_K recipes at clearly lower drift than them. Layer 0,
+  attention and MLP layer 0 stay NVFP4, so the batched-prefill paths stay on.
+authors: [milosde111]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.gdn.z"
+    layers: "24-31"
+    format: FP8
+  - match: "L*.mlp"
+    layers: "1-63"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
