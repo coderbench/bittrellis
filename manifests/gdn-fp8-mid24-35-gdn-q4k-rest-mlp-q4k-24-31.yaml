@@ -1,0 +1,23 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-fp8-mid24-35-gdn-q4k-rest-mlp-q4k-24-31
+description: >
+  FP8 on the recurrent projections of layers 24-35 and Q4_K on every other recurrent projection after layer 0,
+  lm_head fitted once from BF16, plus Q4_K on the MLP of the same mid band (24-31) only. #62 puts Q4_K on all 63
+  MLP blocks and halves prefill; a fit over every measured hpc01-e4/e5 result puts most of the MLP drift gain in
+  the mid band, so this keeps 55 MLP blocks on the shipped bytes for prefill near the recurrent Q4_K maps at a
+  drift near #62. Layer 0 and attention stay NVFP4.
+authors: [kaivexa]
+default: NVFP4
+rules:
+  - match: "L*.gdn.*"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.gdn.*"
+    layers: "24-35"
+    format: FP8
+  - match: "L*.mlp"
+    layers: "24-31"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
