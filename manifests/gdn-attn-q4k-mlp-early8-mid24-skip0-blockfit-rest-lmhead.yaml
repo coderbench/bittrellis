@@ -1,0 +1,37 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-attn-q4k-mlp-early8-mid24-skip0-blockfit-rest-lmhead
+description: >
+  The Q4_K window map of gdn-attn-q4k-mlp-early8-mid24-skip0 (#37: 0.1091, decode 96.2, prefill 10,258,
+  20.92 GiB) with every projection that stays NVFP4 re-encoded by nvfp4_blockfit, and lm_head fitted once
+  from BF16. That map leaves 31 MLP layers (9-23 and 48-63) and the whole of layer 0 on round-to-nearest
+  NVFP4 bytes, about a third of all weights. nvfp4_blockfit lowered the drift of an all-NVFP4 map from
+  0.1357 to 0.0992 with the same kernels (#28), and #75 showed the gain survives next to Q4_K recurrent
+  layers (0.1210 to 0.1015). Formats and kernels do not change, so decode, prefill and peak memory should
+  stay at #37's values while drift falls toward 0.095-0.100: a point between gdn-q4k-fp8-mid24-35-mlp-q4k
+  (0.0889 at 8,754 prefill) and #75 (0.1015 at 13,597) in prompt speed, at 0.7 GiB less memory than #75.
+authors: [gold-tree-tech]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.attn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.*"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.attn.*"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-8"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "24-47"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
