@@ -1,0 +1,37 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: gdn-q4k-skip0-fp8-mid24-35-nvfp4-blockfit-rest-lmhead
+description: >
+  Combine two independently paid axes that have not been stacked yet: (1) #75's
+  recurrent Q4_K after layer 0 with nvfp4_blockfit on every remaining NVFP4
+  projection (eval:XS / merge-first — Q4_K decode/memory with blockfit's NVFP4
+  drift cut), and (2) the attested FP8 band on recurrent layers 24-35 that paid
+  on Q4_K maps (#62/#63/#71) and on the blockfit-shipped map (#74). #71 stacked
+  the band with calibrated unsloth MLP 0-27 but left attention/MLP on plain
+  NVFP4; #75 put blockfit on those NVFP4 weights but had no FP8 band; #74 put
+  the band on a fully-blockfit map whose recurrent path outside 24-35 stays
+  NVFP4@blockfit rather than Q4_K. This recipe keeps #75's Q4_K skip0 + blockfit
+  MLP/attn/gdn0 skeleton and overlays FP8 only on gdn 24-35. Not a mid-end MLP
+  Q4_K half-step (Survivor mid-end hard stop after #59/#60/#61). #76's full-FP8
+  + blockfit path was dominated — we do NOT widen past the 24-35 band. No local
+  GPU numbers — evaluator re-measures.
+authors: [SurvivorAI0817]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.attn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.*"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.gdn.*"
+    layers: "24-35"
+    format: FP8
+modules:
+  lm_head: Q4_K
