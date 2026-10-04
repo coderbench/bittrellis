@@ -1,0 +1,29 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: nvfp4-blockfit-gdn-qkv-attn-q4k-fp8-mid24-35-lmhead-q4k
+description: >
+  #86 (Q4_K on recurrent qkv 1-63 and attention, nvfp4_blockfit on z, out, MLP and layer 0, lm_head fitted once:
+  RP-KL 0.0858, decode 95.1, peak 21.67 GiB) with every recurrent projection of layers 24-35 on FP8. On the blockfit
+  map that same band lowered drift by 0.0096 (#28 to #74), more than any other 27 projections, mostly in long
+  context; here it replaces Q4_K qkv and blockfit z/out in the band, so the gain should be smaller but in the same
+  sections, for about 2.5% decode and 0.4 GiB, leaving decode above every FP8-qkv result (#80, #83) and memory
+  below them.
+authors: [kaivexa]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.attn.*"
+    format: Q4_K
+  - match: "L*.gdn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.qkv"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.gdn.*"
+    layers: "24-35"
+    format: FP8
+modules:
+  lm_head: Q4_K
