@@ -1,0 +1,37 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: blockfit-gdn-qkv-attn-q4k-mlp-q4k-24-47-lmhead-q4k
+description: >
+  The core of nvfp4-blockfit-gdn-qkv-attn-q4k-lmhead-q4k (#86: 0.0858, decode 95.1, prefill 13,627,
+  21.67 GiB) with Q4_K also on the 24 MLP layers 24-47; every other projection keeps nvfp4_blockfit bytes
+  and lm_head is fitted once. The two low-memory maps show what each MLP layer costs: all 63 MLP layers
+  as Q4_K over the same core (#87) take drift from 0.0858 to 0.0899, prefill from 13,627 to 8,710 and
+  memory from 21.67 to 20.56 GiB, about 0.018 GiB and 80 tok/s per layer at almost no drift. A 24-layer
+  window in the middle, where earlier window maps (#37, gdn-attn-q4k-mlp-mid) kept their task scores,
+  should land near 0.087 drift, 95 decode, 10,500-11,000 prefill and 21.1-21.2 GiB: about half a GiB
+  below #86 at a quarter of #87's prefill loss, and 0.007 lower drift than the two maps already at that
+  memory (gdn-q4k-mlp-early8-mid24-skip0-attn-blockfit-rest-lmhead at 21.08 GiB and
+  gdn-attn-q4k-early3-mid28-blockfit-rest-lmhead at 21.36 GiB), which keep the recurrent z and out and the
+  MLP outside the window on Q4_K or round-to-nearest bytes instead.
+authors: [gold-tree-tech]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.attn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.qkv"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.attn.*"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "24-47"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
