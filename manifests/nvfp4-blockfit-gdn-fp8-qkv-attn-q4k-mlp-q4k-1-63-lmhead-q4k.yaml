@@ -1,0 +1,30 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: nvfp4-blockfit-gdn-fp8-qkv-attn-q4k-mlp-q4k-1-63-lmhead-q4k
+description: >
+  #97 (FP8 recurrent qkv 1-63, attention and MLP 1-23/48-63 on runtime Q4_K, nvfp4_blockfit elsewhere, lm_head
+  fitted once: RP-KL 0.0763 at 21.99 GiB) with MLP 24-47 on runtime Q4_K as well, so every MLP layer but layer 0
+  runs Q4_K. On #86's map the same 24 layers cost about 0.004 of drift and 0.42 GiB (#86 to #90), and on the FP8
+  map the other 39 cost 0.002 for 0.69 GiB (#93 to #97). This should land near 0.080 drift at about 21.6 GiB
+  peak: the low-memory end of the FP8 qkv line, with #87's prefill (all MLP Q4_K) and far lower drift than any
+  frontier map under 21.9 GiB (#86: 0.0858 at 21.67). Layer 0 stays on blockfit bytes for the batched-prefill
+  path.
+authors: [lourincedaging0-commits]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.attn.*"
+    format: Q4_K
+  - match: "L*.gdn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.qkv"
+    layers: "1-63"
+    format: FP8
+  - match: "L*.mlp"
+    layers: "1-63"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
