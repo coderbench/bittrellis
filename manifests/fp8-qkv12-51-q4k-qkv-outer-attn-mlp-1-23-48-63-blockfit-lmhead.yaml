@@ -1,0 +1,36 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: fp8-qkv12-51-q4k-qkv-outer-attn-mlp-1-23-48-63-blockfit-lmhead
+description: >
+  Between #97 (FP8 recurrent qkv 1-63, Q4_K attention, Q4_K MLP 1-23 and 48-63: RP-KL 0.0763, decode 89.7,
+  21.99 GiB) and #86 (Q4_K qkv: 0.0858, decode 95.1, 21.67 GiB). FP8 stays on the recurrent qkv of layers 12-51,
+  where #95 measured most of its gain; the outer qkv layers 1-11 and 52-63 move from FP8 to Q4_K, which on qkv
+  is also closer to BF16 than blockfit NVFP4. Seventeen fewer FP8 layers should give back about 2.5% decode and
+  0.35 GiB for about 0.003 RP-KL. Q4_K stays on attention and on MLP 1-23 and 48-63 (#97's band); z, out, MLP
+  24-47 and layer 0 keep nvfp4_blockfit; lm_head is fitted once as Q4_K. Expected near 0.079-0.081, decode about
+  92, about 21.6 GiB: the low-drift, low-memory corner no row holds today.
+authors: [gold-tree-tech]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.attn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.qkv"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.gdn.qkv"
+    layers: "12-51"
+    format: FP8
+  - match: "L*.attn.*"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-23,48-63"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
