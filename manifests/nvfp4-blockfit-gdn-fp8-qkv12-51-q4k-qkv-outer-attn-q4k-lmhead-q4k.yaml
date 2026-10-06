@@ -1,0 +1,32 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: nvfp4-blockfit-gdn-fp8-qkv12-51-q4k-qkv-outer-attn-q4k-lmhead-q4k
+description: >
+  #95 (FP8 recurrent qkv 12-51, attention on runtime Q4_K, nvfp4_blockfit on every other NVFP4 projection,
+  lm_head fitted once: RP-KL 0.0796, decode 91.5, 22.38 GiB) with the outer recurrent qkv (1-11, 52-63) moved
+  from blockfit NVFP4 to runtime Q4_K; layer 0 keeps its NVFP4 bytes for the batched-prefill path. On the
+  blockfit map, runtime Q4_K on qkv did not cost drift (#91 to #86: 0.0909 to 0.0858 with attention already on
+  Q4_K) and saved memory at equal decode. #96 tried the inverse (Q4_K on 12-51, FP8 outside) and was dominated
+  by #86; here the mid-depth layers that buy the most drift per byte (#63, #74) stay on FP8 and only the outer
+  17 qkv take the smaller Q4_K fit. Measured on an RTX 5090 against #95 built on the same box: section-balanced
+  drift 0.0802 vs 0.0796, peak memory 0.19 GiB lower, decode -0.6%, 4K prefill -5%: #95's drift at less
+  memory, a point between #95 and #86 (0.0858 at 21.67 GiB) that neither covers.
+authors: [milosde111]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.attn.*"
+    format: Q4_K
+  - match: "L*.gdn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.qkv"
+    layers: "1-11,52-63"
+    format: Q4_K
+  - match: "L*.gdn.qkv"
+    layers: "12-51"
+    format: FP8
+modules:
+  lm_head: Q4_K
