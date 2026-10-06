@@ -1,0 +1,33 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: q4k-qkv-attn-mlp-1-23-48-63-blockfit-zo-mid-lmhead
+description: >
+  The Q4_K recurrent qkv and attention of nvfp4-blockfit-gdn-qkv-attn-q4k-lmhead-q4k (#86: RP-KL 0.0858, decode
+  95.1, prefill 13,627, 21.67 GiB), plus Q4_K on the early and late MLP layers 1-23 and 48-63 only; the middle
+  MLP layers 24-47, the recurrent z and out projections and layer 0 keep nvfp4_blockfit bytes, and lm_head is
+  fitted once as Q4_K. On this Q4_K-qkv map the MLP drift cost sits in the middle layers: Q4_K on MLP 24-47
+  alone (#90: 0.0897) cost as much as Q4_K on all of 1-63 (#87: 0.0899), so the 39 early and late layers are
+  nearly free in drift while each saves about 0.018 GiB. Expected near 0.086-0.087 at about 21.0 GiB: drift
+  about 0.008 below #82 at the same memory, and #87's drift or better with about 15% more 4K prefill.
+authors: [gold-tree-tech]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.attn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.qkv"
+    layers: "1-63"
+    format: Q4_K
+  - match: "L*.attn.*"
+    format: Q4_K
+  - match: "L*.mlp"
+    layers: "1-23,48-63"
+    format: Q4_K
+modules:
+  lm_head: Q4_K
