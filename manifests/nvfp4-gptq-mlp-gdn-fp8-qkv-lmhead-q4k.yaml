@@ -1,0 +1,26 @@
+schema: bittrellis/manifest@2
+track: HPC-01
+name: nvfp4-gptq-mlp-gdn-fp8-qkv-lmhead-q4k
+description: >
+  #80 (FP8 on the recurrent qkv of layers 1-63, nvfp4_blockfit on every other NVFP4 projection, lm_head
+  fitted once: RP-KL 0.0782, decode 89.5, prefill 14.2K, peak 22.84 GiB) with every MLP block encoded by
+  nvfp4_gptq. #102 made the same swap on #93 (#80 plus attention on Q4_K): RP-KL 0.0743 to 0.0688 at identical
+  decode, prefill and memory. Formats and kernels here are #80's, so speed and memory should not move, and
+  attention stays NVFP4, so prefill stays above the attention-Q4_K GPTQ results.
+authors: [Tet-9]
+default: NVFP4
+rules:
+  - match: "L*.mlp"
+    format: NVFP4
+    quantizer: nvfp4_gptq
+  - match: "L*.attn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.*"
+    format: NVFP4
+    quantizer: nvfp4_blockfit
+  - match: "L*.gdn.qkv"
+    layers: "1-63"
+    format: FP8
+modules:
+  lm_head: Q4_K
