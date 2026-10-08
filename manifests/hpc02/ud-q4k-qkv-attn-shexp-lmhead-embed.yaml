@@ -1,0 +1,36 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: ud-q4k-qkv-attn-shexp-lmhead-embed
+description: >
+  #129 (unsloth UD-Q4_K_M with routed downs, lm_head, token embeddings and the recurrent qkv on Q4_K: RP-KL
+  0.0612, decode 431.4, 23.73 GiB) with the attention projections (q, k, v, o of the 10 full-attention layers)
+  and the shared experts (gate, up, down of all 40 layers) on Q4_K (kq_rtn) instead of Q8_0. A decoded token
+  reads both in full (0.27 B and 0.13 B weights); #129 showed Q4_K on the recurrent qkv (0.50 B) gives +7%
+  decode, so these should give about +4-5% at a further memory saving, between #129 and the all-Q4_K seed V2.
+  The recurrent z and out stay Q8_0.
+authors: [kaivexa]
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q4_K
+  - match: "L*.exps.up"
+    format: Q4_K
+  - match: "L*.exps.down"
+    format: Q4_K
+    encoder: kq_rtn
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_rtn
+  - match: "L*.attn.*"
+    format: Q4_K
+    encoder: kq_rtn
+  - match: "L*.shexp.*"
+    format: Q4_K
+    encoder: kq_rtn
+modules:
+  L34.exps.down: Q6_K
+  L38.exps.down: Q6_K
+  L39.exps.down: Q6_K
+  lm_head: {format: Q4_K, encoder: kq_rtn}
+  embed: {format: Q4_K, encoder: kq_rtn}
