@@ -1,0 +1,30 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+authors: [ismayilovibadet802-svg]
+name: ud-late-downs-q6k-lmhead-q8
+description: >
+  unsloth UD-Q4_K_M (V0) with the routed expert down projections of the last twenty layers (20-39) on Q6_K and
+  the output head on Q8_0; every other unit keeps V0's exact bytes. Rounding error introduced late in the stack
+  has the fewest layers left to be corrected before it reaches the logits, and V0's own choice of Q6_K for the
+  downs of layers 34, 38 and 39 points the same way; this extends it to the whole second half for about 0.7 GiB,
+  half the cost of lifting every layer. The output head moves from Q6_K to Q8_0 (about 0.12 GiB) because its
+  error enters the next-token distribution directly. Expected: lower drift than V0 at about 26.3 GiB with decode
+  close to V0, a smaller step than raising all forty layers.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q4_K
+  - match: "L*.exps.up"
+    format: Q4_K
+  - match: "L*.exps.down"
+    format: Q5_K
+  - match: "L*.exps.down"
+    layers: "20-39"
+    format: Q6_K
+    encoder: kq_rtn
+modules:
+  L34.exps.down: Q6_K
+  L38.exps.down: Q6_K
+  L39.exps.down: Q6_K
+  lm_head: {format: Q8_0, encoder: kq_rtn}
