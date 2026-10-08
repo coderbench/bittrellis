@@ -1,0 +1,27 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+authors: [e11734937-beep]
+name: ud-downs-q6k-lmhead-q8
+description: >
+  unsloth UD-Q4_K_M (V0) with every routed expert down projection on Q6_K and the output head on Q8_0; all
+  other units keep V0's exact bytes. The expert down projections carry the expert outputs straight into the
+  residual stream and are the most rounding-sensitive expert tensor (V0 itself already lifts layers 34, 38 and
+  39 to Q6_K); moving the other 37 layers from Q5_K to Q6_K costs about 1.4 GiB. The output head is read in full
+  for every token and maps the residual onto the 248k-token vocabulary, so its rounding error lands directly in
+  the next-token distribution; Q6_K to Q8_0 costs about 0.12 GiB. The aim is a quality point between V0 (25.5
+  GiB) and V3 (29.2 GiB) at about 27 GiB, keeping V0's Q4_K gate/up so decode stays close to V0.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q4_K
+  - match: "L*.exps.up"
+    format: Q4_K
+  - match: "L*.exps.down"
+    format: Q6_K
+    encoder: kq_rtn
+modules:
+  L34.exps.down: Q6_K
+  L38.exps.down: Q6_K
+  L39.exps.down: Q6_K
+  lm_head: {format: Q8_0, encoder: kq_rtn}
