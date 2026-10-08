@@ -1,0 +1,27 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: v3-exps-q6k-gate-up-24-39
+description: >
+  V3 (routed expert gate/up Q5_K, routed downs Q6_K, everything else Q8_0, lm_head Q6_K: RP-KL 0.0340, peak
+  29.24 GiB, the lowest-drift seed) with the routed expert gate and up projections of the last 16 layers (24-39)
+  raised to Q6_K. V3 leaves about 1.4 GiB under the memory screen; the late layers are where unsloth's own map
+  spends its extra bits (Q6_K downs on 34, 38, 39), and Q5_K to Q6_K roughly halves those tensors' rounding error
+  for 1.06 GiB. Decode reads only 8 of 256 experts per token, so speed should fall little; the aim is drift below
+  V3's at a peak still under 31.5 GiB, a corner no recipe holds.
+authors: [kaivexa]
+default: Q8_0
+rules:
+  - match: "L*.exps.gate"
+    format: Q5_K
+  - match: "L*.exps.up"
+    format: Q5_K
+  - match: "L*.exps.down"
+    format: Q6_K
+  - match: "L*.exps.gate"
+    layers: "24-39"
+    format: Q6_K
+  - match: "L*.exps.up"
+    layers: "24-39"
+    format: Q6_K
+modules:
+  lm_head: Q6_K
