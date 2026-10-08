@@ -1,0 +1,24 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: v3-kq-gptq2
+description: >
+  V3 (routed expert gate/up Q5_K, routed downs Q6_K, everything else Q8_0, lm_head Q6_K: RP-KL 0.0340, the
+  lowest-drift seed) with every Q5_K and Q6_K tensor encoded by kq_gptq2 instead of kq_rtn: routed gate/up by GPTQ
+  at each expert's channel energies, routed downs and lm_head by the importance-weighted Q6_K fit. Same formats,
+  speed and memory as V3. On the pinned weights and statistics (layer 20) the routed gate/up output error falls to
+  about 0.5 of kq_rtn's and the downs' energy-weighted error by 27%; the aim is the lowest drift of any recipe at
+  V3's cost.
+authors: [kaivexa]
+default: Q8_0
+rules:
+  - match: "L*.exps.gate"
+    format: Q5_K
+    encoder: kq_gptq2
+  - match: "L*.exps.up"
+    format: Q5_K
+    encoder: kq_gptq2
+  - match: "L*.exps.down"
+    format: Q6_K
+    encoder: kq_gptq2
+modules:
+  lm_head: {format: Q6_K, encoder: kq_gptq2}
