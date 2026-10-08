@@ -1,0 +1,15 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: all-q4k-kq-gptq
+description: >
+  The all-Q4_K seed V2 (RP-KL 0.1207, decode 466, 23.25 GiB: the fastest and smallest recipe) with every tensor
+  encoded by kq_gptq instead of kq_rtn. Formats, kernels, decode, prefill and memory are V2's; only the rounding
+  changes. kq_gptq rounds by GPTQ on the pinned HPC-02 statistics where they give a second moment (recurrent qkv/z,
+  attention q/k/v, shared experts, and routed expert gate/up at each expert's channel energies), and fits every
+  K-quant grid by weighted least squares (llama.cpp's make_qkx2 candidates) elsewhere. On the pinned weights and
+  statistics (layer 20) the Hessian-weighted output error falls to 0.32-0.36 of kq_rtn's for the recurrent
+  projections, 0.53-0.56 for routed gate/up, and 0.86-0.90 for routed downs; V2's drift should fall far toward
+  the UD map's at V2's speed and memory.
+authors: [kaivexa]
+default: Q4_K
+encoders: {Q4_K: kq_gptq}
