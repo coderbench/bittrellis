@@ -1,0 +1,24 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+authors: [e11734937-beep]
+name: ud-exps-q5k-downs-q6k-kq-imat-lmhead-q8
+description: >
+  #138 (unsloth UD-Q4_K_M with every routed down on Q6_K by kq_imat and the output head on Q8_0: RP-KL 0.0384,
+  26.97 GiB) with the routed expert gate/up raised to Q5_K, also rounded by kq_imat from each expert's pinned channel
+  energies. The routed experts then sit at V3's formats (gate/up Q5_K, downs Q6_K) while every dense projection
+  keeps unsloth's Q8_0 bytes and the shared experts stay Q8_0; kq_imat replaces kq_rtn's per-block rounding on all
+  120 expert tensors. Aimed below V3's drift (0.0340) at V3's speed and about V3's memory.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.up"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.down"
+    format: Q6_K
+    encoder: kq_imat
+modules:
+  lm_head: {format: Q8_0, encoder: kq_rtn}
