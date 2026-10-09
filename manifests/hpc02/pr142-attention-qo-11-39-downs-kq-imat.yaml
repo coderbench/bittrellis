@@ -1,0 +1,41 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+authors: [ismayilovibadet802-svg]
+name: pr142-attention-qo-11-39-downs-kq-imat
+description: >
+  #142's map (unsloth's routed gate/up; every routed down and every recurrent qkv on Q4_K; recurrent z/out on Q4_K
+  only in layers 20-39) with the attention q and o projections of layers 11-39 on Q4_K as in #145, every routed
+  down rounded by kq_imat, and unsloth's own lm_head (Q6_K) and token embeddings (Q8_0). It keeps the shallow
+  recurrent z/out and the attention k/v (the tensors whose Q4_K cost the most drift and tasks: #130, #134, #144)
+  on Q8_0, so it sits between #142 (447 tok/s) and #145 (474 tok/s) on decode at well below #145's drift.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q4_K
+  - match: "L*.exps.up"
+    format: Q4_K
+  - match: "L*.exps.down"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_rtn
+  - match: "L*.gdn.z"
+    layers: "20-39"
+    format: Q4_K
+    encoder: kq_rtn
+  - match: "L*.gdn.out"
+    layers: "20-39"
+    format: Q4_K
+    encoder: kq_rtn
+  - match: "L*.attn.q"
+    layers: "11-39"
+    format: Q4_K
+    encoder: kq_rtn
+  - match: "L*.attn.o"
+    layers: "11-39"
+    format: Q4_K
+    encoder: kq_rtn
+modules:
+  lm_head: Q6_K
