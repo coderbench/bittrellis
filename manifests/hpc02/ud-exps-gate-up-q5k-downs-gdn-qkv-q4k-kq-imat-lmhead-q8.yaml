@@ -1,0 +1,27 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+authors: [ismayilovibadet802-svg]
+name: ud-exps-gate-up-q5k-downs-gdn-qkv-q4k-kq-imat-lmhead-q8
+description: >
+  The middle of the frontier between #129 (0.0612, 432 tok/s, 23.7 GiB) and #133 (0.0366, 387 tok/s, 28.0 GiB):
+  routed expert gate/up on Q5_K and every routed down on Q4_K, all rounded by kq_imat, the recurrent qkv projections
+  on Q4_K (kq_rtn, as #129) for decode speed, and the output head on Q8_0. Recurrent z/out, attention and shared
+  experts keep unsloth's Q8_0 bytes. Spends the memory #129 saved on the expert precision that buys the most
+  drift per GiB (gate/up), at about 26.6 GiB.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.up"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.down"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_rtn
+modules:
+  lm_head: {format: Q8_0, encoder: kq_rtn}
