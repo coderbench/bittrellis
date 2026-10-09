@@ -1,0 +1,32 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+authors: [e11734937-beep]
+name: ud-exps-q5k-downs-q4k-q6k-gdn-qkv-q4k-kq-imat-lmhead-q8
+description: >
+  Between #151 (gate/up Q5_K, every down Q4_K, qkv Q4_K: 0.0512, 420 tok/s, 26.65 GiB) and #152 (gate/up Q5_K,
+  every down Q6_K: 0.0304, 384 tok/s, 29.47 GiB). Routed gate/up on Q5_K; routed downs of layers 0-19 on Q4_K and of
+  layers 20-39 on Q6_K (the deep downs carry more of the drift: #136); recurrent qkv on Q4_K for decode speed; all of
+  these rounded by kq_imat (on the recurrent qkv it removed about a third of Q4_K's drift in #147/#148/#153). The
+  output head is Q8_0; z/out, attention, shared experts and embeddings keep unsloth's Q8_0 bytes.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.up"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.down"
+    layers: "0-19"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.exps.down"
+    layers: "20-39"
+    format: Q6_K
+    encoder: kq_imat
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_imat
+modules:
+  lm_head: {format: Q8_0, encoder: kq_rtn}
