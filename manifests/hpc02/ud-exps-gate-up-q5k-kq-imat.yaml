@@ -1,0 +1,25 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: ud-exps-gate-up-q5k-kq-imat
+description: >
+  #133 (unsloth UD-Q4_K_M with the routed expert gate/up raised to Q5_K: RP-KL 0.0366, decode 387, 28.01 GiB) with
+  those Q5_K gate/up tensors encoded by kq_imat (#138, merged) instead of kq_rtn: importance-weighted K-quant scales
+  from each expert's pinned channel energies, no error feedback. Same formats, speed and memory as #133; every other
+  byte is unsloth's. kq_imat lowers the weighted error of Q5_K gate/up by 27-29% against kq_rtn (#138).
+authors: [kaivexa]
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.up"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.down"
+    format: Q5_K
+modules:
+  L34.exps.down: Q6_K
+  L38.exps.down: Q6_K
+  L39.exps.down: Q6_K
+  lm_head: Q6_K
