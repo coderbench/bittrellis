@@ -1,0 +1,47 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: pr156-kq-imatrix-downs-qkv
+description: >
+  #156 (#147 with the shallow recurrent z/out on Q5_K and every expert down on Q4_K: RP-KL 0.0876, decode 474.2,
+  23.21 GiB) with the routed expert downs and the recurrent qkv encoded by kq_imatrix (#146, merged):
+  per-expert importance weights for the downs and GPTQ on the pinned x xT for the recurrent qkv, falling back
+  per block to kq_rtn bytes when those have the lower weighted error. Formats, kernels, speed and memory are
+  #156's; only the rounding of those Q4_K tensors changes, so drift should fall at the track's fastest decode.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q4_K
+  - match: "L*.exps.up"
+    format: Q4_K
+  - match: "L*.exps.down"
+    format: Q4_K
+    encoder: kq_imatrix
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_imatrix
+  - match: "L*.gdn.z"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.gdn.out"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.gdn.z"
+    layers: "0-19"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.gdn.out"
+    layers: "0-19"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.attn.q"
+    layers: "11-39"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.attn.o"
+    layers: "11-39"
+    format: Q4_K
+    encoder: kq_imat
+modules:
+  lm_head: {format: Q4_K, encoder: kq_imat}
+  embed: {format: Q4_K, encoder: kq_imat}
