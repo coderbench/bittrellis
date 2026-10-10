@@ -1,0 +1,40 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: pr161-attention-qo-11-39-q4k
+description: >
+  #161 (routed gate/up on Q5_K by kq_imat, every routed down and the recurrent qkv on Q4_K by kq_imatrix,
+  lm_head on Q8_0: RP-KL 0.0445, decode 419.8, prefill 38,230, 26.65 GiB) with the attention q and o
+  projections of layers 11-39 on Q4_K. That is the step #145 measured on #130 (RP-KL 0.0965 to 0.1016,
+  decode 458.7 to 474.3, +3.4%) and #153 measured again on #148 (0.0598 to 0.0634, 447.2 to 460.3, +2.9%):
+  about +0.004 RP-KL for +3% decode, because q and o are most of the attention bytes a decoded token reads
+  while k and v, and the attention layers 3 and 7, stay Q8_0. Attention q is rounded by kq_imatrix (GPTQ on
+  attn_input.xtx); attention o has no pinned covariance and stays kq_imat, as in #153. Gate/up stay Q5_K
+  kq_imat. Recurrent z/out, the shared experts and lm_head stay Q8_0. The same per-token bytes that moved
+  #148 to #153 should move #161 from 419.8 toward about 434 tok/s, with drift still near 0.049, ahead of
+  #146 (0.0547 at 431.8) on fidelity. #160 showed that swapping kq_imatrix onto tensors already rounded by
+  kq_imat does not move this frontier; this changes the format, so decode moves.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.up"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_imatrix
+  - match: "L*.exps.down"
+    format: Q4_K
+    encoder: kq_imatrix
+  - match: "L*.attn.q"
+    layers: "11-39"
+    format: Q4_K
+    encoder: kq_imatrix
+  - match: "L*.attn.o"
+    layers: "11-39"
+    format: Q4_K
+    encoder: kq_imat
+modules:
+  lm_head: {format: Q8_0, encoder: kq_rtn}
