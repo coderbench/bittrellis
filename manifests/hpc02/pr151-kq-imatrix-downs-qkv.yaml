@@ -1,0 +1,28 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: pr151-kq-imatrix-downs-qkv
+description: >
+  #151 (routed gate/up on Q5_K by kq_imat, every routed down on Q4_K by kq_imat, recurrent qkv on Q4_K by
+  kq_rtn, lm_head on Q8_0: RP-KL 0.0512, decode 420.1, prefill 38,416, 26.65 GiB) with kq_imatrix on the
+  two Q4_K groups it already reads statistics for. The routed downs move from kq_imat to kq_imatrix, the
+  same swap #158 measured on #147 (RP-KL 0.0855 to 0.0807, decode and memory unchanged). The recurrent qkv
+  moves from kq_rtn to kq_imatrix, where #146 measured that encoder against kq_rtn on #129's qkv and downs
+  (RP-KL 0.0612 to 0.0547) and the qkv path is GPTQ on attn_input.xtx. Gate/up stay Q5_K kq_imat. Attention,
+  recurrent z/out and the shared experts stay unsloth Q8_0. Formats, kernels, speed and memory stay #151's.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.up"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_imatrix
+  - match: "L*.exps.down"
+    format: Q4_K
+    encoder: kq_imatrix
+modules:
+  lm_head: {format: Q8_0, encoder: kq_rtn}
