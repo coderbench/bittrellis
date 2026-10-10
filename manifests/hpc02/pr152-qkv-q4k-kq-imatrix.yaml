@@ -1,0 +1,31 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: pr152-qkv-q4k-kq-imatrix
+description: >
+  #152 (routed gate/up on Q5_K and every routed down on Q6_K, both by kq_imat, dense projections and the
+  shared experts on unsloth Q8_0, lm_head on Q8_0: RP-KL 0.0304, decode 383.6, prefill 36,808, 29.47 GiB)
+  with the 30 recurrent qkv projections on Q4_K by kq_imatrix. #129 measured that format step on #126:
+  decode 404 to 431 (+6.7%), prefill unchanged, at +0.012 RP-KL with kq_rtn. #146 rounded the same qkv
+  with kq_imatrix (GPTQ on attn_input.xtx) and measured 0.0547 against #129's 0.0612 at the same decode.
+  The qkv are 0.50 B weights read in full for every decoded token. Gate/up stay Q5_K kq_imat and every
+  routed down stays Q6_K kq_imat on all 40 layers (#157's Q4_K/Q6_K split of those downs failed the
+  holdout; this keeps #152's uniform Q6_K). Attention, recurrent z/out and the shared experts stay
+  unsloth Q8_0. Decode should move by about that same +27 tok/s, toward ~410. kq_imatrix kept #146
+  0.0065 below the kq_rtn qkv map, so the drift cost should be smaller than #129's +0.012.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.up"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.exps.down"
+    format: Q6_K
+    encoder: kq_imat
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_imatrix
+modules:
+  lm_head: {format: Q8_0, encoder: kq_rtn}
