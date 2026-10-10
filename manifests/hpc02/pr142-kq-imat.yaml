@@ -1,0 +1,32 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: pr142-kq-imat
+description: >
+  #142 (#129 with the recurrent z/out of layers 20-39 and every routed down on Q4_K) with every kq_rtn tensor
+  encoded by kq_imat (#138, merged): importance-weighted K-quant scales from the pinned statistics, no error
+  feedback. Formats, kernels, speed and memory are #142's; only the rounding changes, which lowers each tensor's
+  weighted error by 25-32% against kq_rtn (#138's measurements). Unsloth's routed gate/up bytes stay.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q4_K
+  - match: "L*.exps.up"
+    format: Q4_K
+  - match: "L*.exps.down"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.gdn.z"
+    layers: "20-39"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.gdn.out"
+    layers: "20-39"
+    format: Q4_K
+    encoder: kq_imat
+modules:
+  lm_head: {format: Q4_K, encoder: kq_imat}
+  embed: {format: Q4_K, encoder: kq_imat}
