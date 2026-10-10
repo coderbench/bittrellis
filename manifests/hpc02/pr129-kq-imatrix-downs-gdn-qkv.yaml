@@ -1,0 +1,33 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: pr129-kq-imatrix-downs-gdn-qkv
+description: >
+  #129's map (unsloth UD-Q4_K_M with the routed expert downs except layers 34, 38 and 39, the recurrent qkv,
+  lm_head and the embeddings on Q4_K: RP-KL 0.0612, decode 432.1, 23.73 GiB) with kq_imatrix on the Q4_K tensors
+  the pinned statistics cover: the 37 Q4_K routed expert downs (per-expert exps_down.sumsq / count) and the 30
+  recurrent qkv projections (GPTQ on attn_input.xtx). kq_imatrix weighs every input channel by its mean x² on
+  the statistics, searches each sub-block's scale and minimum under those weights and refits the stored 6-bit
+  and f16 scales. The formats, and so decode, prefill and memory, are #129's; only the rounding changes. lm_head
+  and the embeddings have no statistics and keep kq_rtn; unsloth's gate/up, Q6_K downs and Q8_0 bytes are kept.
+  On an RTX 5090 with the repo's tools (own BF16 reference), paired with #129 built and run on the same box:
+  RP-KL 0.0578 vs 0.0672 (-14%), so about 0.053 on the ledger's scale; 784-task guard 561 vs V0 570 (lost 20,
+  gained 11, every suite above alpha).
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q4_K
+  - match: "L*.exps.up"
+    format: Q4_K
+  - match: "L*.exps.down"
+    format: Q4_K
+    encoder: kq_imatrix
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_imatrix
+modules:
+  L34.exps.down: Q6_K
+  L38.exps.down: Q6_K
+  L39.exps.down: Q6_K
+  lm_head: {format: Q4_K, encoder: kq_rtn}
+  embed: {format: Q4_K, encoder: kq_rtn}
