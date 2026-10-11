@@ -1,0 +1,53 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: pr144-kq-imatrix-attn-gdn-q5k
+description: >
+  #144's map (unsloth's routed gate/up, every routed down but layers 34, 38 and 39 on Q4_K, every attention
+  projection and every Gated DeltaNet projection on Q5_K, lm_head and the embeddings on Q4_K: decode 479.8, the
+  fastest measured map, 23.45 GiB) with the error-feedback rounding of kq_imatrix where the full input covariance
+  is pinned: attention q/k/v and recurrent qkv/z, GPTQ on attn_input.xtx. On the pinned BF16 weights of layers 3,
+  12, 19 and 30 that cuts the xtx-weighted Q5_K error to 0.12-0.32 of kq_rtn's, against 0.18-0.45 for kq_imat's
+  diagonal search. Units with only a diagonal (routed downs) or no statistics (attention o, recurrent out,
+  lm_head, embeddings) use the merged kq_imat. #144 itself (kq_rtn) failed the task guard at 558/784; this keeps
+  its formats, and so its speed and memory, and only changes the rounding.
+  On an RTX 5090 with the repo's tools (own BF16 reference), paired with #147's recipe built and run on the same
+  box (RP-KL 0.0856 there, 0.0855 on the ledger): RP-KL 0.0953, so about 0.095 on the ledger's scale (paired
+  delta vs #147 +0.0096, 95% CI +0.002..+0.018); decode 480.6 and 480.7 in two runs (#147: 474.8); 784-task guard
+  563 vs V0 570 (lost 22, gained 15).
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q4_K
+  - match: "L*.exps.up"
+    format: Q4_K
+  - match: "L*.exps.down"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.gdn.qkv"
+    format: Q5_K
+    encoder: kq_imatrix
+  - match: "L*.gdn.z"
+    format: Q5_K
+    encoder: kq_imatrix
+  - match: "L*.gdn.out"
+    format: Q5_K
+    encoder: kq_imat
+  - match: "L*.attn.q"
+    format: Q5_K
+    encoder: kq_imatrix
+  - match: "L*.attn.k"
+    format: Q5_K
+    encoder: kq_imatrix
+  - match: "L*.attn.v"
+    format: Q5_K
+    encoder: kq_imatrix
+  - match: "L*.attn.o"
+    format: Q5_K
+    encoder: kq_imat
+modules:
+  L34.exps.down: Q6_K
+  L38.exps.down: Q6_K
+  L39.exps.down: Q6_K
+  lm_head: {format: Q4_K, encoder: kq_imat}
+  embed: {format: Q4_K, encoder: kq_imat}
