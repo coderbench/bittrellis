@@ -1,0 +1,43 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: pr153-kq-imatrix-downs-qkv
+description: >
+  #153 (#142 with attention q/o of layers 11-39 on Q4_K, every re-encoded tensor on kq_imat: RP-KL 0.0634,
+  decode 460.3, prefill 40,141, 23.32 GiB) with kq_imatrix on the two groups #158 and #161 actually moved:
+  every routed expert down and every recurrent qkv. #158 measured that swap on #147 (RP-KL 0.0855 to 0.0807,
+  decode and memory unchanged, holdout pass). #160 made the same swap and also moved recurrent z and attention
+  q, and RP-KL only went 0.0634 to 0.0629, inside noise, so those two groups stay kq_imat here. Recurrent out,
+  attention o, lm_head and the embeddings have no pinned covariance and stay kq_imat. Unsloth's gate/up and the
+  Q8_0 bytes stay. Formats, kernels, speed and memory stay #153's.
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q4_K
+  - match: "L*.exps.up"
+    format: Q4_K
+  - match: "L*.exps.down"
+    format: Q4_K
+    encoder: kq_imatrix
+  - match: "L*.gdn.qkv"
+    format: Q4_K
+    encoder: kq_imatrix
+  - match: "L*.gdn.z"
+    layers: "20-39"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.gdn.out"
+    layers: "20-39"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.attn.q"
+    layers: "11-39"
+    format: Q4_K
+    encoder: kq_imat
+  - match: "L*.attn.o"
+    layers: "11-39"
+    format: Q4_K
+    encoder: kq_imat
+modules:
+  lm_head: {format: Q4_K, encoder: kq_imat}
+  embed: {format: Q4_K, encoder: kq_imat}
