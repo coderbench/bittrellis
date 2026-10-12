@@ -1,0 +1,33 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: pr133-eg1-ed0-22090c
+description: '#133''s map (RP-KL 0.0366, decode 387.0 tok/s, prefill 37,387 tok/s, peak 28.01 GiB) with the routed
+  gate/up of layers 20-39 on Q4_K (kq_rtn); the routed downs on Q4_K (kq_imatrix). Predicted from the evaluator''s
+  own hpc02-e1 results.'
+default: Q8_0
+encoders:
+  Q8_0: unsloth_ud
+rules:
+- match: L*.exps.gate
+  layers: 0-19
+  format: Q5_K
+  encoder: kq_rtn
+- match: L*.exps.gate
+  layers: 20-39
+  format: Q4_K
+  encoder: kq_rtn
+- match: L*.exps.up
+  layers: 0-19
+  format: Q5_K
+  encoder: kq_rtn
+- match: L*.exps.up
+  layers: 20-39
+  format: Q4_K
+  encoder: kq_rtn
+- match: L*.exps.down
+  format: Q4_K
+  encoder: kq_imatrix
+modules:
+  lm_head:
+    format: Q6_K
+    encoder: unsloth_ud
