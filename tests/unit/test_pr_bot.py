@@ -227,3 +227,12 @@ def test_each_pass_first_pulls_main_and_loads_merged_encoders(monkeypatch):
     monkeypatch.setattr(pr_bot.subprocess, "run", lambda cmd, **k: types.SimpleNamespace(returncode=1, stderr="diverged", stdout=""))
     pr_bot.Evaluator.sync_main(me)
     assert loaded == [1, 1]
+
+
+def test_a_held_pr_is_listed_by_number_in_the_root(tmp_path):
+    import types
+
+    me = types.SimpleNamespace(root=tmp_path)
+    assert pr_bot.Evaluator.held(me) == set()
+    (tmp_path / "hold.txt").write_text("167  # until the maintainer says so\n\n170 171\n")
+    assert pr_bot.Evaluator.held(me) == {167, 170, 171}

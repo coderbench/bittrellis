@@ -735,6 +735,14 @@ class Evaluator:
                 print(f"[sync] main moved to {after[:7]}: retrying {', '.join(retry)}", flush=True)
                 self.save()
 
+    def held(self) -> set[int]:
+        """PR numbers the maintainer asked to hold, one per line in <root>/hold.txt (read every pass). A held PR is
+        still observed (its first-seen time counts) but not evaluated, labelled, merged or closed."""
+        f = self.root / "hold.txt"
+        if not f.exists():
+            return set()
+        return {int(t) for line in f.read_text().splitlines() for t in line.split("#", 1)[0].split() if t.isdigit()}
+
     def run_once(self) -> None:
         if getattr(self.args, "sync_main", False):
             self.sync_main()
@@ -748,7 +756,11 @@ class Evaluator:
             o = self.obs.observe(pr["number"], pr["user"]["login"], pr["head"]["sha"])
             first_seen[(pr["number"], pr["head"]["sha"])] = o["first_seen"]
         self.rerank(open_prs)  # first, so a PR lifted by a closed reference resumes in this pass
+        held = self.held()
         for pr in queue_order(open_prs, first_seen):
+            if pr["number"] in held:
+                print(f"[hold] #{pr['number']} held by the maintainer (<root>/hold.txt): not evaluated", flush=True)
+                continue
             key = f"{pr['number']}-{pr['head']['sha'][:12]}"
             entry = self.state.get(key, {})
             status = entry.get("status")
