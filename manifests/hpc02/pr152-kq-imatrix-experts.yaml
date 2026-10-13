@@ -1,0 +1,25 @@
+schema: bittrellis/manifest@2
+track: HPC-02
+name: pr152-kq-imatrix-experts
+description: >
+  #152 (unsloth UD-Q4_K_M with the routed gate/up on Q5_K and every routed down on Q6_K, all 120 routed expert
+  tensors rounded by kq_imat, lm_head on Q8_0: RP-KL 0.0304, decode 383.6, prefill 36,808, 29.47 GiB) with every
+  routed expert tensor rounded by kq_imatrix instead. The same encoder swap moved #147 from 0.0855 to 0.0807 (#158)
+  and #151 from 0.0512 to 0.0445 (#161), both with holdout PASS and unchanged speed and memory. Formats are #152's,
+  so decode, prefill and peak memory should not move; only the rounding of the routed experts changes. Every dense
+  projection and the shared experts keep unsloth's Q8_0 bytes; lm_head stays Q8_0 by kq_rtn.
+authors: [nexrobin]
+default: Q8_0
+encoders: {Q4_K: unsloth_ud, Q5_K: unsloth_ud, Q6_K: unsloth_ud, Q8_0: unsloth_ud}
+rules:
+  - match: "L*.exps.gate"
+    format: Q5_K
+    encoder: kq_imatrix
+  - match: "L*.exps.up"
+    format: Q5_K
+    encoder: kq_imatrix
+  - match: "L*.exps.down"
+    format: Q6_K
+    encoder: kq_imatrix
+modules:
+  lm_head: {format: Q8_0, encoder: kq_rtn}
