@@ -236,3 +236,34 @@ def test_a_held_pr_is_listed_by_number_in_the_root(tmp_path):
     assert pr_bot.Evaluator.held(me) == set()
     (tmp_path / "hold.txt").write_text("167  # until the maintainer says so\n\n170 171\n")
     assert pr_bot.Evaluator.held(me) == {167, 170, 171}
+
+
+def test_github_reads_retry_a_dropped_connection_and_writes_do_not(monkeypatch):
+    import http.client
+    import io
+
+    import pytest
+
+    monkeypatch.setattr(pr_bot, "RETRY_SECONDS", 0)
+    calls = []
+
+    class Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def flaky(req, timeout):
+        calls.append(req.get_method())
+        if len(calls) == 1:
+            raise http.client.RemoteDisconnected("Remote end closed connection without response")
+        return Resp(b'{"ok": 1}')
+
+    monkeypatch.setattr(pr_bot.urllib.request, "urlopen", flaky)
+    gh = pr_bot.GitHub("o/r", "t")
+    assert gh.api("GET", "/pulls/1") == {"ok": 1} and calls == ["GET", "GET"]
+    calls.clear()
+    with pytest.raises(http.client.RemoteDisconnected):
+        gh.api("POST", "/issues/1/comments", {"body": "x"})       # a write is never repeated
+    assert calls == ["POST"]

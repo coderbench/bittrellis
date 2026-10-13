@@ -49,6 +49,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -131,6 +132,7 @@ APPROVED, COPY_CLEARED, HOLD = "eval-approved", "copy-cleared", "hold"
 RESCREEN = {"queued", "needs-approval", "copy-review", "unsafe-host"}   # re-checked every pass
 RANKED = {"frontier", "dominated", "gate"}
 MAX_ERRORS = 3
+RETRY_SECONDS = 5            # GitHub reads: wait 5 s, then 10 s, before giving up
 
 
 class GitHub:
@@ -142,9 +144,18 @@ class GitHub:
         req = urllib.request.Request(url, method=method, data=json.dumps(body).encode() if body is not None else None,
                                      headers={"Authorization": f"Bearer {self.token}", "Accept": "application/vnd.github+json",
                                               "X-GitHub-Api-Version": "2022-11-28"})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            data = r.read()
-            return json.loads(data) if data else None
+        # Reads are retried on a dropped connection or a GitHub 5xx (the evaluator once died on one); writes are not,
+        # since a write that reached GitHub before the connection dropped would be repeated.
+        for attempt in range(3 if method == "GET" else 1):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    data = r.read()
+                    return json.loads(data) if data else None
+            except (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError) as e:
+                transient = not isinstance(e, urllib.error.HTTPError) or e.code >= 500
+                if not transient or attempt == 2 or method != "GET":
+                    raise
+                time.sleep(RETRY_SECONDS * (attempt + 1))
 
     def paged(self, path: str) -> list:
         out, page = [], 1
@@ -1384,7 +1395,13 @@ def main() -> int:
     gh.ensure_labels()
     ev = Evaluator(gh, args)
     while True:
-        ev.run_once()
+        try:
+            ev.run_once()
+        except (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError) as e:
+            if args.once:
+                raise
+            print(f"[net] pass stopped by a network error, retried next pass: {e!r}", flush=True)
+            traceback.print_exc()
         if args.once:
             return 0
         time.sleep(args.interval)
