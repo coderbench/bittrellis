@@ -125,8 +125,9 @@ EXTRA_LABELS = {
     "derivative": ("bt:derivative", "fff3b0", "close to an earlier PR by another author; credited only for what it adds"),
     "approved": ("eval-approved", "0e8a16", "maintainer: evaluate this PR's contributed code in the sandbox"),
     "copy-cleared": ("copy-cleared", "0e8a16", "maintainer: measure this PR despite repeated near-copies"),
+    "hold": ("hold", "d4c5f9", "maintainer: the evaluator leaves this PR alone (no evaluation, labels, merge or close) until removed"),
 }
-APPROVED, COPY_CLEARED = "eval-approved", "copy-cleared"
+APPROVED, COPY_CLEARED, HOLD = "eval-approved", "copy-cleared", "hold"
 RESCREEN = {"queued", "needs-approval", "copy-review", "unsafe-host"}   # re-checked every pass
 RANKED = {"frontier", "dominated", "gate"}
 MAX_ERRORS = 3
@@ -755,12 +756,14 @@ class Evaluator:
         for pr in open_prs:  # observe everything before evaluating anything
             o = self.obs.observe(pr["number"], pr["user"]["login"], pr["head"]["sha"])
             first_seen[(pr["number"], pr["head"]["sha"])] = o["first_seen"]
+        # A held PR (label `hold`, or listed in <root>/hold.txt) keeps its first-seen time above but is otherwise
+        # left alone this pass: not evaluated, relabelled, merged or closed.
+        held = self.held() | {p["number"] for p in open_prs if HOLD in {lab["name"] for lab in p.get("labels") or []}}
+        for n in sorted(held & {p["number"] for p in open_prs}):
+            print(f"[hold] #{n} held by the maintainer: left alone this pass", flush=True)
+        open_prs = [p for p in open_prs if p["number"] not in held]
         self.rerank(open_prs)  # first, so a PR lifted by a closed reference resumes in this pass
-        held = self.held()
         for pr in queue_order(open_prs, first_seen):
-            if pr["number"] in held:
-                print(f"[hold] #{pr['number']} held by the maintainer (<root>/hold.txt): not evaluated", flush=True)
-                continue
             key = f"{pr['number']}-{pr['head']['sha'][:12]}"
             entry = self.state.get(key, {})
             status = entry.get("status")

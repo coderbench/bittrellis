@@ -381,3 +381,16 @@ def test_a_result_above_the_lowest_tier_still_runs_the_holdout_and_tasks(bot):
     pr_bot.Evaluator(gh, bot.args).run_once()
     assert (1, "holdout") in bot.stages and (1, "tasks") in bot.stages
     assert {f"eval:{t}" for t in pr_bot.TIERS} & set(gh.labels[1])
+
+
+def test_a_pr_labelled_hold_is_left_alone_until_the_label_is_removed(bot):
+    sha = _one_frontier_pr(bot)
+    held = {**pr(1, "alice", sha), "labels": [{"name": "hold"}]}
+    gh = MergingGitHub([held])
+    ev = pr_bot.Evaluator(gh, bot.args)
+    ev.run_once()
+    assert f"1-{sha[:12]}" not in ev.state and gh.merged == [] and not gh.labels.get(1) and not gh.comments.get(1)
+    assert ev.obs.observe(1, "alice", sha)["first_seen"]          # its first-seen time still counts
+    held["labels"] = []                                           # the maintainer removes `hold`
+    ev.run_once()
+    assert gh.merged == [(1, sha, "squash")]
