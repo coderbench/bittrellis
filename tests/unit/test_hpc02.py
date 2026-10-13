@@ -174,3 +174,14 @@ def test_audit_rebuilds_samples_in_parallel_and_still_catches_a_flipped_byte(tin
         fh.write(bytes([b[0] ^ 1]))
     bad = hpc02.audit(out, m, tdir, ud=ud, secret="s", verify=False, **QUIET)
     assert not bad["ok"] and any("embed" in e for e in bad["errors"])
+
+
+def test_the_encode_cache_drops_least_recently_used_entries_beyond_its_size(tmp_path):
+    import os
+
+    for i, name in enumerate(("old", "mid", "new")):
+        (tmp_path / f"{name}.bin").write_bytes(b"x" * 1024)
+        (tmp_path / f"{name}.sha256").write_text("h")
+        os.utime(tmp_path / f"{name}.bin", (1000 + i, 1000 + i))
+    hpc02._prune_cache(tmp_path, max_gib=2048 / 2**30)          # room for two entries
+    assert sorted(f.name for f in tmp_path.iterdir()) == ["mid.bin", "mid.sha256", "new.bin", "new.sha256"]

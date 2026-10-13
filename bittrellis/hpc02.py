@@ -306,6 +306,25 @@ def read_units_file(path: Path = UNITS_FILE) -> tuple[list[Unit], dict[str, str]
 # few units of a merged one re-encodes only those. Only the evaluator sets BITTRELLIS_ENCODE_CACHE (never passed into
 # the sandbox), the audit always regenerates without it, and entries are checked by sha256 when read.
 CACHE_MIN_SECONDS = 5.0      # cheaper encodes (kq_rtn on most tensors) are not worth the disk
+CACHE_MAX_GIB = 40.0         # least recently used entries are dropped beyond this (models already take ~260 GB)
+
+
+def _prune_cache(d: Path, max_gib: float = CACHE_MAX_GIB) -> None:
+    """Drop the least recently used entries until the cache fits; a dropped tensor is only encoded again."""
+    try:
+        blobs = sorted(((f.stat().st_mtime, f.stat().st_size, f) for f in d.glob("*.bin")), key=lambda t: t[0])
+    except OSError:
+        return
+    total = sum(size for _, size, _ in blobs)
+    for _, size, f in blobs:
+        if total <= max_gib * 2**30:
+            break
+        for g in (f, f.with_suffix(".sha256")):
+            try:
+                g.unlink()
+            except OSError:
+                pass
+        total -= size
 
 
 def _cache_key(enc: Encoder, u: Unit, x: Assignment, fmt: str) -> str:
@@ -329,6 +348,7 @@ def _encode_cached(enc: Encoder, u: Unit, x: Assignment, fmt: str, produce: Call
     try:
         data = blob.read_bytes()
         if hashlib.sha256(data).hexdigest() == meta.read_text().strip():
+            os.utime(blob)                       # recently used: pruned last
             return data
     except OSError:
         pass
@@ -341,6 +361,7 @@ def _encode_cached(enc: Encoder, u: Unit, x: Assignment, fmt: str, produce: Call
             tmp.write_bytes(data)
             os.replace(tmp, blob)
             meta.write_text(hashlib.sha256(data).hexdigest() + "\n")
+            _prune_cache(base.parent)
         except OSError:
             pass   # a full or read-only cache only costs the speed-up
     return data
