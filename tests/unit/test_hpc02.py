@@ -127,3 +127,50 @@ def test_committed_unit_list_reads_back():
     assert len(us) == 372 and us[0].id == "embed" and us[-1].id == "lm_head"
     assert sum(u.kind.startswith("exps.") for u in us) == 120 and set(udf.values()) <= set(hpc02.FORMATS)
     assert hpc02.units_doc(us, udf) == json.loads(hpc02.UNITS_FILE.read_text())   # round trip
+
+
+def test_trusted_builds_reuse_encoded_tensors(tiny, tmp_path, monkeypatch):
+    tdir, ud = tiny
+    calls = []
+
+    def slow(ctx, fmt):
+        calls.append(ctx.unit.id)
+        return hpc02.kquant.RTN[fmt](ctx.rows)
+
+    hpc02.register(hpc02.Encoder("slow_rtn", 1, "regenerable", slow))
+    try:
+        monkeypatch.setattr(hpc02, "CACHE_MIN_SECONDS", 0.0)
+        monkeypatch.setenv("BITTRELLIS_ENCODE_CACHE", str(tmp_path / "cache"))
+        m = manifest(tmp_path, rules=[{"match": "L*.exps.*", "format": "Q5_K", "encoder": "slow_rtn"}])
+        a, b = tmp_path / "a.gguf", tmp_path / "b.gguf"
+        hpc02.build(m, tdir, a, ud=ud, jobs=1, **QUIET)
+        first = len(calls)
+        hpc02.build(m, tdir, b, ud=ud, jobs=1, **QUIET)
+        assert first == 6 and len(calls) == first and a.read_bytes() == b.read_bytes()   # second build: all reused
+        for f in (tmp_path / "cache" / "hpc02").glob("*.bin"):                              # damaged entries are rebuilt
+            d = f.read_bytes()
+            f.write_bytes(bytes([d[0] ^ 1]) + d[1:])
+        hpc02.build(m, tdir, b, ud=ud, jobs=1, **QUIET)
+        assert len(calls) == 2 * first and a.read_bytes() == b.read_bytes()
+        assert hpc02.audit(b, m, tdir, ud=ud, secret="s", verify=False, **QUIET)["ok"]      # the audit never reads it
+    finally:
+        hpc02.ENCODERS.pop("slow_rtn")
+
+
+def test_audit_rebuilds_samples_in_parallel_and_still_catches_a_flipped_byte(tiny, tmp_path, monkeypatch):
+    from bittrellis import gguf_build
+
+    tdir, ud = tiny
+    monkeypatch.setattr(gguf_build, "default_jobs", lambda: 3)
+    m = manifest(tmp_path, rules=[{"match": "L*.exps.*", "format": "Q6_K"}])
+    out = tmp_path / "c.gguf"
+    hpc02.build(m, tdir, out, ud=ud, jobs=1, **QUIET)
+    assert hpc02.audit(out, m, tdir, ud=ud, secret="s", verify=False, **QUIET)["ok"]
+    x = next(t for t in gguf.GGUFReader(str(out)).tensors if t.name == "token_embd.weight")   # always sampled
+    with open(out, "r+b") as fh:
+        fh.seek(int(x.data_offset) + 3)
+        b = fh.read(1)
+        fh.seek(int(x.data_offset) + 3)
+        fh.write(bytes([b[0] ^ 1]))
+    bad = hpc02.audit(out, m, tdir, ud=ud, secret="s", verify=False, **QUIET)
+    assert not bad["ok"] and any("embed" in e for e in bad["errors"])

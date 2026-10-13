@@ -301,6 +301,51 @@ def read_units_file(path: Path = UNITS_FILE) -> tuple[list[Unit], dict[str, str]
 
 # ------------------------------------------------------------------ build
 
+# Encoded tensors are reused across trusted builds. A regenerable encoder's bytes for a tensor depend only on the
+# template tensor, the format, the encoder version, its params and the pinned statistics, so a recipe that changes a
+# few units of a merged one re-encodes only those. Only the evaluator sets BITTRELLIS_ENCODE_CACHE (never passed into
+# the sandbox), the audit always regenerates without it, and entries are checked by sha256 when read.
+CACHE_MIN_SECONDS = 5.0      # cheaper encodes (kq_rtn on most tensors) are not worth the disk
+
+
+def _cache_key(enc: Encoder, u: Unit, x: Assignment, fmt: str) -> str:
+    from .lineage import load_lock
+
+    lock = load_lock()["sources"]
+    key = ["hpc02-encode/1", enc.ref, u.tensor, fmt, sorted(x.params), lock[SOURCES["template"]]["revision"],
+           lock.get(SOURCES["calibration"], {}).get("revision")]
+    return hashlib.sha256(json.dumps(key, default=str).encode()).hexdigest()
+
+
+def _encode_cached(enc: Encoder, u: Unit, x: Assignment, fmt: str, produce: Callable[[], bytes]) -> bytes:
+    import os
+    import time
+
+    root = os.environ.get("BITTRELLIS_ENCODE_CACHE")
+    if not root:
+        return produce()
+    base = Path(root) / "hpc02" / _cache_key(enc, u, x, fmt)
+    blob, meta = base.with_suffix(".bin"), base.with_suffix(".sha256")
+    try:
+        data = blob.read_bytes()
+        if hashlib.sha256(data).hexdigest() == meta.read_text().strip():
+            return data
+    except OSError:
+        pass
+    t = time.time()
+    data = produce()
+    if time.time() - t >= CACHE_MIN_SECONDS:
+        try:
+            base.parent.mkdir(parents=True, exist_ok=True)
+            tmp = blob.with_suffix(f".tmp{os.getpid()}")
+            tmp.write_bytes(data)
+            os.replace(tmp, blob)
+            meta.write_text(hashlib.sha256(data).hexdigest() + "\n")
+        except OSError:
+            pass   # a full or read-only cache only costs the speed-up
+    return data
+
+
 
 def _assign(us: list[Unit], a: dict[str, Assignment], template, ud: Path | None, calibration) -> dict:
     """{tensor: (format, fn(fmt, rows) -> bytes)} for gguf_build: every unit plus the fixed F32 tensors."""
@@ -314,8 +359,8 @@ def _assign(us: list[Unit], a: dict[str, Assignment], template, ud: Path | None,
         if enc.lineage == "attested":
             out[u.tensor] = (x.format, lambda fmt, rows, t=ud_tensors[u.tensor]: np.asarray(t.data).tobytes())
         else:
-            out[u.tensor] = (x.format, lambda fmt, rows, u=u, x=x, enc=enc: enc.fn(
-                EncodeContext(rows, u, dict(x.params), calibration), fmt))
+            out[u.tensor] = (x.format, lambda fmt, rows, u=u, x=x, enc=enc: _encode_cached(
+                enc, u, x, fmt, lambda: enc.fn(EncodeContext(rows, u, dict(x.params), calibration), fmt)))
     for name in fixed_f32(template):
         out[name] = ("F32", lambda fmt, rows: kquant.to_f32(rows))
     return out
@@ -404,6 +449,19 @@ def verify_sources(template_dir: Path, ud: Path | None, calibration_dir: Path | 
 SAMPLES_PER_ENCODER = 6
 
 
+_AUDIT: dict = {}
+
+
+def _audit_one(i: int) -> bool:
+    """Rebuild one sampled tensor (in a forked worker) and compare it with the candidate's bytes."""
+    from .gguf_build import _bf16_rows
+
+    enc, u = _AUDIT["rebuild"][i]
+    x = _AUDIT["a"][u.id]
+    want = enc.fn(EncodeContext(_bf16_rows(_AUDIT["T"][u.tensor]), u, dict(x.params), _AUDIT["calib"]), x.format)
+    return np.asarray(_AUDIT["C"][u.tensor].data).tobytes() == want
+
+
 def audit(gguf_path: Path, manifest: Path, template_dir: Path, ud: Path | None = None, calibration_dir: Path | None = None,
           secret: str = "", regenerated_dir: Path | None = None, verify: bool = True, log=print) -> dict:
     """The HPC-01 rules for a GGUF candidate: same metadata and tensors as the template, frozen tensors byte for
@@ -455,6 +513,7 @@ def audit(gguf_path: Path, manifest: Path, template_dir: Path, ud: Path | None =
         elif np.asarray(c.data).tobytes() != np.asarray(t.data).tobytes():
             errors.append(f"{name}: bytes differ from the template")
     lineage: dict[str, dict] = {}
+    rebuild: list[tuple[Encoder, Unit]] = []      # sampled trusted regenerations, rebuilt in parallel below
     udt = {t.name: t for t in GGUFReader(ud).tensors} if ud else {}
     calib = SafeTensorsDir(calibration_dir) if calibration_dir else None
     for enc_name in sorted({x.encoder for x in a.values()}):
@@ -474,13 +533,28 @@ def audit(gguf_path: Path, manifest: Path, template_dir: Path, ud: Path | None =
                 if want is None:
                     errors.append(f"{u.id}: no regeneration by {enc.ref} was provided")
                     continue
-            else:
-                x = a[u.id]
-                want = enc.fn(EncodeContext(_bf16_rows(T[u.tensor]), u, dict(x.params), calib), x.format)
-            if u.tensor in C and np.asarray(C[u.tensor].data).tobytes() != want:
-                errors.append(f"{u.id}: does not match a regeneration by {enc.ref}")
+                if u.tensor in C and np.asarray(C[u.tensor].data).tobytes() != want:
+                    errors.append(f"{u.id}: does not match a regeneration by {enc.ref}")
+            elif u.tensor in C:
+                rebuild.append((enc, u))
         lineage[enc.ref] = {"lineage": "regenerable", "units": len(mine), "sampled": sorted(u.id for u in sample),
                             **({"replay_mode": "isolated"} if isolated else {})}
+    if rebuild:
+        import multiprocessing
+
+        from .gguf_build import default_jobs
+
+        _AUDIT.update(rebuild=rebuild, a=a, T=T, C=C, calib=calib)
+        try:
+            jobs = min(len(rebuild), default_jobs())
+            if jobs > 1:
+                with multiprocessing.get_context("fork").Pool(jobs) as pool:
+                    same = pool.map(_audit_one, range(len(rebuild)))
+            else:
+                same = [_audit_one(i) for i in range(len(rebuild))]
+        finally:
+            _AUDIT.clear()
+        errors += [f"{u.id}: does not match a regeneration by {enc.ref}" for (enc, u), ok in zip(rebuild, same, strict=True) if not ok]
     res = {"ok": not errors, "errors": errors[:200], "n_errors": len(errors), "candidate_id": cid, "lineage": lineage}
     log(f"[hpc02] audit {'PASS' if res['ok'] else 'FAIL'} ({cid}): {len(errors)} errors")
     return res
