@@ -59,6 +59,29 @@ def default_encoder(fmt: str, rows: np.ndarray) -> bytes:
     return kquant.RTN[fmt](rows)
 
 
+def _memory_gib() -> float:
+    """The memory this process may use: the container's limit when there is one, else the machine's."""
+    try:
+        v = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        if v.isdigit():
+            return int(v) / 2**30
+    except OSError:
+        pass
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2**30
+    except (ValueError, OSError):
+        return 0.0
+
+
+def default_jobs() -> int:
+    """Encoder workers: half the CPUs, and one per 9 GiB of memory. Each worker holds one tensor as float32 (an
+    expert tensor is 1 GB) plus an encoder's float64 work; twelve filled a 62 GB host and its swap on 2026-10-08,
+    so such a host gets 6, a 105 GiB one 11."""
+    gib = _memory_gib()
+    by_mem = max(1, int(gib // 9)) if gib else 6          # unknown memory: the old default
+    return max(1, min((os.cpu_count() or 2) // 2, by_mem))
+
+
 def build_gguf(template: list[Path], out: Path, assign: dict[str, tuple[str, Callable]], jobs: int | None = None,
                log=print) -> dict:
     """`assign`: {tensor name: (format, encoder(fmt, float32 rows) -> bytes)}; other tensors are copied."""
@@ -93,9 +116,7 @@ def build_gguf(template: list[Path], out: Path, assign: dict[str, tuple[str, Cal
     w.write_ti_data_to_file()
     names = list(tensors)
     todo = [n for n in names if n in assign]
-    # Six workers: each holds one tensor as float32 (an expert tensor is 1 GB) while it encodes; twelve filled
-    # a 62 GB host and its swap on 2026-10-08.
-    jobs = jobs or max(1, min(6, (os.cpu_count() or 2) // 2))
+    jobs = jobs or default_jobs()
     _JOB.update(tensors=tensors, assign=assign)
     pool = multiprocessing.get_context("fork").Pool(jobs) if jobs > 1 and todo else None
     try:

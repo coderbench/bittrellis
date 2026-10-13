@@ -72,3 +72,12 @@ def test_chunked_encoding_gives_the_same_bytes(monkeypatch):
     whole = {f: kquant.RTN[f](w) for f in ("Q4_K", "Q5_K", "Q6_K", "Q8_0")}
     monkeypatch.setattr(kquant, "CHUNK_ROWS", 7)
     assert {f: kquant.RTN[f](w) for f in whole} == whole
+
+
+def test_encoder_workers_follow_cpus_and_memory(monkeypatch):
+    from bittrellis import gguf_build as g
+
+    monkeypatch.setattr(g.os, "cpu_count", lambda: 24)
+    for gib, jobs in ((62, 6), (105, 11), (400, 12), (8, 1), (0, 6)):     # 0: memory unknown, the old default
+        monkeypatch.setattr(g, "_memory_gib", lambda gib=gib: gib)
+        assert g.default_jobs() == jobs
